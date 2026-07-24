@@ -19,3 +19,6 @@ raw_data/
 .obsidian/
 .vscode/
 .idea/
+
+# Graficas y resultados generados
+plots/

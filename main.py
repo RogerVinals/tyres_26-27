@@ -1,36 +1,42 @@
-
 # Copyright (C) 2026 Roger Viñals
 # Distributed under the terms of the GNU General Public License v3 (GPLv3)
 
-import numpy as np
-import pandas as pd
+import sys
 import matplotlib.pyplot as plt
+from src.parsing import cargar_dat_ttc
 
 def main():
-	print("=== e-Tech Racing Tyre Dara Processor ===")
-
-	#Simu de datos dummy para validar que funciona el entorno
-	slip_angle = np.linspace(-12, 12, 100) #Ángulo de desliazamiento (degree)
-	fy = 1500 *np.sin(np.radians(slip_angle * 8)) #Lat fuerza simulada
-
-	#Data Frame
-	df = pd.DataFrame({'Slip_Angle_deg': slip_angle, 'Fy_N': fy})
-	print("\nPrimeras filas de análisis:")
-	print(df.head())
-
-	#Generador de gráficas de prueba
-	plt.figure(figsize=(8, 5))
-	plt.plot(df['Slip_Angle_deg'], df['Fy_N'], label='Lat Fuerza (Fy)', color='b')
-	plt.title('Curva de Lat Fuerza vs Ángulo de Deslizamiento (Pacejka Dummy)')
-	plt.xlabel('Angulo deslizamiento [º]')
-	plt.ylabel('Lat Fuerza [N]')
-	plt.grid(True)
-	plt.legend()
-	
-	#Guardar gráficas sin abrir(no tengo GUI, todo es terminal)
-	plt.savefig('data/tyre_test_plot.png')
-	print("\n[OK] Gráfica guardad en 'data/tyre_test_plot.png'")
+    print("=== FSAE Tyre Data Processor ===")
+    
+    # IMPORTANTE: Cambia 'Run38.dat' por el nombre exacto de tu archivo en la carpeta data/
+    archivo_datos = "data/B2356run4.dat"  
+    
+    try:
+        df = cargar_dat_ttc(archivo_datos)
+        print(f"[OK] Datos cargados. Filas: {len(df)}, Columnas: {len(df.columns)}")
+        
+        # Generar gráfica real de SA vs FY
+        plt.figure(figsize=(10, 6))
+        
+        # Usamos scatter porque la telemetría cruda tiene mucho ruido
+        plt.scatter(df['SA'], df['FY'], alpha=0.5, s=5, c='darkorange')
+        
+        plt.title('Raw Tyre Data: Fuerza Lateral vs Ángulo de Deslizamiento')
+        plt.xlabel('Slip Angle (SA) [deg]')
+        plt.ylabel('Lateral Force (FY) [N]')
+        plt.grid(True)
+        
+        # Guardamos la gráfica
+        ruta_salida = 'plots/SA_vs_FY_raw.png'
+        plt.savefig(ruta_salida)
+        print(f"\n[OK] Gráfica de dispersión guardada en '{ruta_salida}'")
+        
+    except FileNotFoundError as e:
+        print(e)
+        sys.exit(1)
+    except Exception as e:
+        print(f"[Error] Fallo inesperado procesando los datos: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-	main()
-
+    main()
