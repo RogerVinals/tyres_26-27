@@ -1,4 +1,3 @@
-## src/plotting.py
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -46,3 +45,44 @@ def graficar_desde_parquet(
         plt.close(fig)
 
         print(f"[plotting] Gráfica guardada: {ruta_salida}")
+
+def graficar_analisis(
+    df: pd.DataFrame,
+    columna_x: str,
+    columna_y: str,
+    agrupar_por: str = "FZ_nom",
+    directorio_salida: Path = None
+) -> plt.Figure:
+    """Genera una gráfica diferenciando por FZ_nom."""
+    
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    grupos = sorted(df[agrupar_por].unique())
+    
+    for valor in grupos:
+        datos_grupo = df[df[agrupar_por] == valor]
+        
+        ax.scatter(
+            datos_grupo[columna_x], 
+            datos_grupo[columna_y], 
+            s=10, 
+            alpha=0.6,
+            label=f"FZ = {valor} N"
+        )
+        
+    ax.set_title(f"{columna_y} vs {columna_x} (Diferenciado por FZ)")
+    ax.set_xlabel(columna_x)
+    ax.set_ylabel(columna_y)
+    
+    if len(grupos) > 0:
+        ax.legend(title="Carga Vertical")
+        
+    ax.grid(True, alpha=0.3)
+    
+    if directorio_salida:
+        directorio_salida.mkdir(exist_ok=True)
+        ruta_salida = directorio_salida / f"analysis_{columna_y}_vs_{columna_x}.png"
+        fig.savefig(ruta_salida, dpi=150, bbox_inches="tight")
+        print(f"[plotting] Gráfica guardada: {ruta_salida}")
+        
+    return fig

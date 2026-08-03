@@ -6,9 +6,10 @@
 # Distributed under the terms of the GNU General Public License v3 (GPLv3)
 
 from pathlib import Path
+import pandas as pd
 from src.parsing import cargar_multiples_runs
 from src.processing import clasificar_datos_ttc
-from src.plotting import graficar_desde_parquet
+from src.plotting import graficar_desde_parquet, graficar_analisis
 
 
 def main() -> None:
@@ -42,8 +43,25 @@ def main() -> None:
     print(f"\nDataset procesado guardado en: {salida}\n")
 
     # 4. Generación de gráficas
+    df_plot = pd.read_parquet(salida)
     graficar_desde_parquet(
         archivo_parquet=salida,
+        directorio_salida=plots_dir
+    )
+
+    # NUEVO: Gráficas de análisis
+    graficar_analisis(
+        df_plot,
+        columna_x="SA",
+        columna_y="FY",
+        agrupar_por="FZ_nom",
+        directorio_salida=plots_dir
+    )
+    graficar_analisis(
+        df_plot,
+        columna_x="SL",
+        columna_y="FX",
+        agrupar_por="FZ_nom",
         directorio_salida=plots_dir
     )
 
