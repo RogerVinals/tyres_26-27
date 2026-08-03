@@ -2,7 +2,7 @@
 
 Software *in-house* para procesar y analizar datos de neumáticos
 
-##Estructura 
+## Estructura 
 - 'data/': Datos de TTC o telemetria
 - 'main.py' Script principal de procesamiento y simulación
 - 'requeriments.txt' Dependencinas para el venv
