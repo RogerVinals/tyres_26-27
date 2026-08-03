@@ -1,27 +1,29 @@
 # FSAE Tyre Data Processor - e-Tech Racing
 
-Software desarrollado in-house para e-Tech Racing para procesar, limpiar y visualizar datos de neumáticos procedentes del Tyre Test Consortium (TTC). Diseñado para optimizar el rendimiento dinámico del vehículo.
+ *Read this in other languages: [Español](README.es.md)*
 
-## Estructura del Repositorio
+In-house software developed for e-Tech Racing to process, clean, and visualize tire data from the Tyre Test Consortium (TTC). Designed to optimize vehicle dynamic performance.
 
-- `data/`: Directorio para los archivos `.dat` crudos del TTC (no incluido en git).
-- `plots/`: Gráficas generadas automáticamente.
-- `results/`: Datasets procesados en formato `.parquet`.
-- `src/`: Lógica modular del proyecto.
-- `notebooks/`: Interfaces interactivas (Jupyter).
-- `main.py`: Orquestador principal del pipeline.
+## Repository Structure
 
-## Instalación
+- `data/`: Directory for raw `.dat` TTC files (not included in git).
+- `plots/`: Automatically generated plots.
+- `results/`: Processed datasets in `.parquet` format.
+- `src/`: Modular logic of the project.
+- `notebooks/`: Interactive interfaces (Jupyter).
+- `main.py`: Main pipeline orchestrator.
 
-A continuación se describen pasos de instalación por sistema operativo. Requiere Python 3.10+.
+## Installation
+
+Installation steps per operating system are described below. Requires Python 3.10+.
 
 ### Linux (Rocky Linux / Fedora)
 
-1. Instalar dependencias del sistema (ej. tkinter):
+1. Install system dependencies (e.g., tkinter):
 ```bash
 sudo dnf install python3-tkinter
 ```
-2. Crear y activar un entorno virtual, luego instalar dependencias Python:
+2. Create and activate a virtual environment, then install Python dependencies:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -42,11 +44,11 @@ pip install -r requirements.txt
 
 ### macOS
 
-1. Instalar Python 3 (recomendado con Homebrew):
+1. Install Python 3 (recommended with Homebrew):
 ```bash
 brew install python
 ```
-2. Crear y activar entorno virtual e instalar dependencias:
+2. Create and activate a virtual environment and install dependencies:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -54,12 +56,12 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> Nota: en macOS, si hay problemas con tkinter, instalar tcl-tk con Homebrew (`brew install tcl-tk`) y seguir las instrucciones de Homebrew para vincularlo al Python usado.
+> Note: on macOS, if there are issues with tkinter, install tcl-tk with Homebrew (`brew install tcl-tk`) and follow Homebrew's instructions to link it to the used Python.
 
 ### Windows
 
-1. Instalar Python 3 desde python.org (marcar "Add Python to PATH").
-2. Abrir PowerShell o CMD y crear/activar el entorno virtual:
+1. Install Python 3 from python.org (check "Add Python to PATH").
+2. Open PowerShell or CMD and create/activate the virtual environment:
 ```powershell
 python -m venv venv
 # PowerShell
@@ -70,30 +72,29 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## Nota sobre los archivos .dat
+## Note on .dat files
 
-Los archivos `.dat` del Tyre Test Consortium (TTC) no están incluidos en este repositorio por motivos legales y de licencia. Si necesitas los datos crudos, solicita acceso al organizador del ensayo o al TTC. Coloca los archivos recibidos dentro del directorio `data/` (no subirlos al repositorio) antes de ejecutar el pipeline.
+The `.dat` files from the Tyre Test Consortium (TTC) are not included in this repository for legal and licensing reasons. If you need the raw data, request access from the test organizer or the TTC. Place the received files inside the `data/` directory (do not upload them to the repository) before running the pipeline.
 
+## Workflow
 
-## Flujo de Trabajo
-
-### 1. Procesamiento de Datos
-Para cargar los archivos crudos de `data/`, clasificarlos físicamente y generar el dataset base:
+### 1. Data Processing
+To load the raw files from `data/`, classify them physically, and generate the base dataset:
 ```bash
 python main.py
 ```
-Este comando crea `results/dataset_clasificado.parquet`.
+This command creates `results/dataset_clasificado.parquet`.
 
-### 2. Exploración y Visualización
-Para inspeccionar los datos de forma gráfica e interactiva:
+### 2. Exploration and Visualization
+To graphically and interactively inspect the data:
 ```bash
 python -m src.gui_explorer
 ```
-- **Interfaz:** Permite seleccionar `FZ_nom`, `P_nom` e `IA_nom` mediante menús desplegables dependientes.
-- **Visualización:** Al actualizar, plotea automáticamente las curvas de `FX` o `FY` diferenciadas por niveles de carga vertical (`FZ_nom`).
+- **Interface:** Allows selecting `FZ_nom`, `P_nom`, and `IA_nom` through dependent dropdown menus.
+- **Visualization:** Upon updating, automatically plots the `FX` or `FY` curves differentiated by vertical load levels (`FZ_nom`).
 
-## Desarrollo y Contribución
-- Mantener la modularidad: Toda lógica matemática debe residir en `src/`.
-- `main.py` solo debe orquestar funciones importadas.
-- Usar siempre `pathlib` para manejo de rutas.
-- Asegurar tipado (`type hints`) en nuevas funciones.
+## Development and Contribution
+- Maintain modularity: All mathematical logic must reside in `src/`.
+- `main.py` should only orchestrate imported functions.
+- Always use `pathlib` for path management.
+- Ensure type hints in new functions.
