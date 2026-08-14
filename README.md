@@ -12,6 +12,7 @@ In-house software developed for e-Tech Racing to process, clean, and visualize t
 - `src/`: Modular logic of the project.
 - `notebooks/`: Interactive interfaces (Jupyter).
 - `main.py`: Main pipeline orchestrator.
+- `matlab/`: Matlab directory
 
 ## Installation
 

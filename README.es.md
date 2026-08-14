@@ -12,7 +12,7 @@ Software desarrollado in-house para e-Tech Racing para procesar, limpiar y visua
 - `src/`: Lógica modular del proyecto.
 - `notebooks/`: Interfaces interactivas (Jupyter).
 - `main.py`: Orquestador principal del pipeline.
-
+- `matlab/`: Matlab directorio
 ## Instalación
 
 A continuación se describen pasos de instalación por sistema operativo. Requiere Python 3.10+.
