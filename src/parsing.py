@@ -2,19 +2,23 @@
 import pandas as pd
 from typing import List
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def cargar_dat_ttc(filepath: str) -> pd.DataFrame:
+def cargar_dat_ttc(filepath: Path) -> pd.DataFrame:
     """Carga archivos .dat del TTC ignorando metadatos y unidades."""
-    ruta = Path(filepath)
-    if not ruta.exists():
-        raise FileNotFoundError(f"[Error] No se encontró el archivo: {ruta}")
+    if not filepath.exists():
+        msg = f"No se encontró el archivo: {filepath}"
+        logger.error(msg)
+        raise FileNotFoundError(f"[Error] {msg}")
 
-    print(f"Cargando telemetría TTC: {ruta.name}...")
+    logger.info(f"Cargando telemetría TTC: {filepath.name}...")
 
     # sep='\s+' separa por tabulaciones/espacios.
     # skiprows=[0, 2] ignora el título y las unidades, dejando las variables como columnas.
-    df = pd.read_csv(ruta, sep=r'\s+', skiprows=[0, 2])
+    df = pd.read_csv(filepath, sep=r'\s+', skiprows=[0, 2])
 
     return df
 
@@ -33,24 +37,19 @@ def cargar_multiples_runs(
     archivos: List[Path] = sorted(directorio.glob(patron))
 
     if not archivos:
-        raise FileNotFoundError(
-            f"No se encontraron archivos con el patrón '{patron}' en {directorio}"
-        )
+        msg = f"No se encontraron archivos con el patrón '{patron}' en {directorio}"
+        logger.error(msg)
+        raise FileNotFoundError(msg)
 
     dataframes: List[pd.DataFrame] = []
 
     for archivo in archivos:
         df_run = cargar_dat_ttc(archivo)
 
-        if df_run is None:
-            raise ValueError(
-                f"cargar_dat_ttc() devolvió None al procesar '{archivo.name}'. "
-                f"Revisa el formato de ese archivo o la lógica de parsing."
-            )
         if df_run.empty:
-            raise ValueError(
-                f"El archivo '{archivo.name}' se cargó pero el DataFrame está vacío."
-            )
+            msg = f"El archivo '{archivo.name}' se cargó pero el DataFrame está vacío."
+            logger.error(msg)
+            raise ValueError(msg)
 
         df_run[columna_id] = archivo.stem
         dataframes.append(df_run)

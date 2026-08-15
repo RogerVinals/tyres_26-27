@@ -1,0 +1,7 @@
+paths:
+  data_dir: "data"
+  results_dir: "results"
+  plots_dir: "plots"
+  
+settings:
+  file_pattern: "*.dat"
