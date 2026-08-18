@@ -23,4 +23,5 @@ raw_data/
 # Graficas y resultados generados
 plots/
 results/
+logs/
 GEMINI.md

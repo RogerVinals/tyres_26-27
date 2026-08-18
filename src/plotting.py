@@ -31,7 +31,7 @@ def graficar_desde_parquet(
             s=8,
             c="darkorange",
             alpha=0.6,
-            label=f"Datos crudos ({len(grupo)} ptos)"
+            label=f"Raw data ({len(grupo)} ptos)"
         )
 
         ax.set_title(f"Fuerza Lateral vs Ángulo de Deslizamiento — {run_id}")

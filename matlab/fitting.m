@@ -1,11 +1,11 @@
 %Programa para hacer fitting con Matlab o GNU Octane
 clear all
 clc
-datos_ttc = importdata("../data/B1654run39.dat");
+datos_ttc = importdata("../data/B1654run34.dat");
 
 %% Bucle para leer datos
-texto = sprintf(datos_ttc.textdata{2,1}); %Definicion de variables y datos funciona sempre menys B2356
-%texto = sprintf(datos_ttc{2,1}) %Usar si es data B2356
+texto = sprintf(datos_ttc.textdata{2,1}); %Definicion de variables y datos
+%texto = sprintf(datos_ttc{2,1}) %Usar si es data B2356 o B1965r
 var = strsplit(texto,"\t");
 data = datos_ttc.data; %Data para runs que no sean B2356
 
@@ -26,8 +26,7 @@ clear ("texto","nombre","var","cont","data") %limpiar variables que no queremos
 %% Graficar
 
 subplot(2,2,1)
-%plot3(s.SA, s.FY, s.FZ, ".")
-surf(s.SA, s.FY, s.FZ)
+plot3(s.SA, s.FY, s.FZ, ".")
 xlabel("SA"); ylabel("FY"); zlabel("FZ")
 title("SA vs FY vs FZ")
 grid on
