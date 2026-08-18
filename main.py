@@ -45,22 +45,24 @@ def main() -> None:
     results_dir.mkdir(exist_ok=True)
     plots_dir.mkdir(exist_ok=True)
 
-    # 3. Cargar datos crudos
+    patron_archivos = "*.dat"
+
+    # 1. Cargar raw data
     df_crudo = cargar_multiples_runs(data_dir, patron=patron_archivos)
 
-    # 4. Clasificar los datos
+    # 2. Clasificar los datos
     df_procesado = clasificar_datos_ttc(df_crudo)
 
     # Resumen de datos
     logger.info("Resumen de datos por Tipo de Test:\n%s", df_procesado['test_type'].value_counts())
     logger.info("Resumen de datos por Carga Vertical (FZ nominal):\n%s", df_procesado['FZ_nom'].value_counts().sort_index())
 
-    # 5. Guardado del resultado
+    # 3. Guardado de resultados
     salida = results_dir / "dataset_clasificado.parquet"
     df_procesado.to_parquet(salida, index=False)
     logger.info("Dataset procesado guardado en: %s", salida)
 
-    # 6. Generación de gráficas
+    # 4. Creación de gráficas
     df_plot = pd.read_parquet(salida)
     graficar_desde_parquet(
         archivo_parquet=salida,
