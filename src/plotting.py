@@ -5,46 +5,61 @@ from pathlib import Path
 def graficar_desde_parquet(
     archivo_parquet: Path,
     directorio_salida: Path,
-    columna_x: str = "SA",
-    columna_y: str = "FY",
     agrupar_por: str = "run_id"
 ) -> None:
-    """Lee un dataset en .parquet y genera una gráfica de dispersión por run."""
+    """Lee un dataset en .parquet y genera la gráfica adecuada según el tipo de ensayo predominante."""
     
     if not archivo_parquet.exists():
         raise FileNotFoundError(f"[Error] No se encontró el archivo: {archivo_parquet}")
         
-    print(f"Leyendo datos desde {archivo_parquet.name}...")
+    print(f"Leyendo datos desde {archivo_parquet.name} para graficar...")
     df = pd.read_parquet(archivo_parquet)
     
     directorio_salida.mkdir(exist_ok=True)
     runs = df[agrupar_por].unique()
+    
+    # Identificar cuál es nuestra columna de Slip corregida
+    col_sl = 'SL_effective' if 'SL_effective' in df.columns else 'SL'
 
+    
     for run_id in runs:
         grupo = df[df[agrupar_por] == run_id]
 
+        # Leemos la clasificación que ya hizo processing.py
+        tipo_ensayo = grupo['test_type'].iloc[0]
+
+        if tipo_ensayo in ['Pure Longitudinal', 'Combined']:
+            col_x, col_y = col_sl, 'FX'
+            titulo_base = "Fuerza Longitudinal vs Slip Ratio"
+            xlabel = "Slip Ratio (SL)"
+        else:
+            col_x, col_y = 'SA', 'FY'
+            titulo_base = "Fuerza Lateral vs Ángulo de Deslizamiento"
+            xlabel = "SA (deg)"
+
         fig, ax = plt.subplots(figsize=(9, 6))
+        # ... (el resto del código de plt.scatter sigue igual)
 
         ax.scatter(
-            grupo[columna_x],
-            grupo[columna_y],
+            grupo[col_x],
+            grupo[col_y],
             s=8,
             c="darkorange",
             alpha=0.6,
             label=f"Raw data ({len(grupo)} ptos)"
         )
 
-        ax.set_title(f"Fuerza Lateral vs Ángulo de Deslizamiento — {run_id}")
-        ax.set_xlabel(f"{columna_x} (deg)")
-        ax.set_ylabel(f"{columna_y} (N)")
+        ax.set_title(f"{titulo_base} — {run_id}")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(f"{col_y} (N)")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-        ruta_salida = directorio_salida / f"plot_raw_{run_id}.png"
+        ruta_salida = directorio_salida / f"plot_raw_{col_y}_vs_{col_x}_{run_id}.png"
         fig.savefig(ruta_salida, dpi=150, bbox_inches="tight")
         plt.close(fig)
 
-        print(f"[plotting] Gráfica guardada: {ruta_salida}")
+        print(f"[plotting] Gráfica guardada: {ruta_salida.name}")
 
 def graficar_analisis(
     df: pd.DataFrame,
