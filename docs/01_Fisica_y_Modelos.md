@@ -1,4 +1,4 @@
-El sistema de cordenadas usado para entender los modelos es el [[00_Sistema_Coord|SAE J670e]] y los datos que se usan para interpolar el modelo se sacan del [[02_Datos_TTC|Tire Test Consortium (TTC)]]
+El sistema de cordenadas usado para entender los modelos es el [[03_Sistema_Coord|SAE J670e]] y los datos que se usan para interpolar el modelo se sacan del [[02_Datos_TTC|Tire Test Consortium (TTC)]]
 
 # Modelo Avanzado: Pacejka Magic Formula 5.2 (PAC2002)
 

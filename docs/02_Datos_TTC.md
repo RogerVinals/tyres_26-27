@@ -4,7 +4,7 @@ Todos los archivos `.dat` crudos proporcionados por el Tire Test Consortium (TTC
 
 **Notas Importantes:**
 *   **Frecuencia de muestreo:** Todos los datos se recogen a 100 Hz.
-*   **Convención de signos:** Los datos se reportan bajo el estándar [[00_Sistema_Coord|SAE J670e]] (Fuerza Vertical $F_z$ negativa en compresión).
+*   **Convención de signos:** Los datos se reportan bajo el estándar [[03_Sistema_Coord|SAE J670e]] (Fuerza Vertical $F_z$ negativa en compresión).
 
 ## Lista de Canales Oficiales
 
