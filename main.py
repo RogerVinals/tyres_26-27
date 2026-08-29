@@ -64,26 +64,35 @@ def main() -> None:
 
     # 4. Creación de gráficas
     df_plot = pd.read_parquet(salida)
+    
+    logger.info("Generando gráficas raw por run...")
     graficar_desde_parquet(
         archivo_parquet=salida,
         directorio_salida=plots_dir
     )
 
-    # Gráficas de análisis
-    graficar_analisis(
-        df_plot,
-        columna_x="SA",
-        columna_y="FY",
-        agrupar_por="FZ_nom",
-        directorio_salida=plots_dir
-    )
-    graficar_analisis(
-        df_plot,
-        columna_x="SL",
-        columna_y="FX",
-        agrupar_por="FZ_nom",
-        directorio_salida=plots_dir
-    )
+    logger.info("Generando gráficas de análisis global...")
+    
+    # --- FILTRO LATERAL ---
+    # Incluimos el Warmup para tapar el hueco del centro
+    df_lateral = df_plot[df_plot['test_type'].isin(['Pure Cornering', 'Warmup / Straight'])]
+    if not df_lateral.empty:
+        graficar_analisis(df_lateral, columna_x="SA", columna_y="FY", agrupar_por="FZ_nom", directorio_salida=plots_dir)
+
+    # --- FILTRO LONGITUDINAL ---
+    # Incluimos el Warmup para tapar el hueco del centro
+    df_longitudinal = df_plot[df_plot['test_type'].isin(['Pure Longitudinal', 'Warmup / Straight'])]
+    if not df_longitudinal.empty:
+        col_sl = 'SL_effective' if 'SL_effective' in df_plot.columns else 'SL'
+        graficar_analisis(df_longitudinal, columna_x=col_sl, columna_y="FX", agrupar_por="FZ_nom", directorio_salida=plots_dir)
+        
+        graficar_analisis(
+            df_longitudinal,
+            columna_x=col_sl,
+            columna_y="FX",
+            agrupar_por="FZ_nom",
+            directorio_salida=plots_dir
+        )
     
     logger.info("Pipeline completado exitosamente.")
 
