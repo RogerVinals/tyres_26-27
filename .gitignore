@@ -19,9 +19,12 @@ raw_data/
 .obsidian/
 .vscode/
 .idea/
-
+.aider/
 # Graficas y resultados generados
 plots/
 results/
 logs/
 GEMINI.md
+
+# Aider files
+.aider*
