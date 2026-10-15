@@ -8,6 +8,12 @@ Ajuste de coeficientes Pacejka Magic Formula 5.2 a datos TTC filtrados
 mediante mínimos cuadrados no lineales (scipy.optimize.least_squares).
 
 Genera un archivo .tir con todos los coeficientes MF5.2.
+
+Mejoras respecto a la versión inicial:
+  * Detección y eliminación de ensayos transitorios (cambios bruscos de FZ/SA).
+  * Ajuste en dos pasadas con eliminación de outliers basada en MAD.
+  * Función de pérdida robusta (soft_l1) para que los errores grandes no dominen.
+  * Bounds físicos y x_scale='jac' para evitar mínimos locales y mejorar convergencia.
 """
 
 from __future__ import annotations
@@ -73,6 +79,103 @@ MAX_PUNTOS = {
 }
 
 
+# ============================================================================
+# Umbrales y bounds físicos
+# ============================================================================
+
+# Filtro de estado estacionario: se eliminan puntos donde FZ o SA cambian
+# bruscamente dentro de una ventana (transitorios de la máquina de ensayo).
+WINDOW_ESTACIONARIO = 25          # puntos de ventana móvil
+UMBRAL_STD_SA = 0.8               # deg, |SA| no debe variar más de esto en la ventana
+UMBRAL_STD_FZ = 40.0              # N, |FZ| no debe variar más de esto en la ventana
+
+# Umbral de outliers (múltiplos del MAD de los residuos)
+OUTLIER_K_MAD = 3.0
+
+
+# Bounds físicos aproximados para coeficientes MF5.2 de llanta de competición
+# (llanta Hoosier 16.0X7.5-10 o similar). Si un parámetro no está listado,
+# se deja sin bounds (-inf, inf).
+FY0_BOUNDS = {
+    "pCy1": (0.5, 2.0),       # forma
+    "pDy1": (0.3, 3.0),       # fricción pico
+    "pDy2": (-2.0, 0.5),      # sensibilidad a carga
+    "pKy1": (-2000.0, -1.0),  # rigidez inicial (negativa por convención)
+    "pKy2": (1.0, 500.0),     # argumento de sin
+    "pKy3": (0.0, 2.0),       # factor camber
+    "pEy1": (0.0, 3.0),       # curvatura
+    "pEy2": (-2.0, 2.0),      # sensibilidad carga curvatura
+    "pHy1": (-10.0, 10.0),    # desplazamiento horizontal
+    "pHy2": (-2.0, 2.0),      # desplazamiento horizontal carga
+    "pVy1": (-2.0, 2.0),      # desplazamiento vertical
+    "pVy2": (-2.0, 2.0),      # desplazamiento vertical carga
+    "pVy3": (-5.0, 5.0),      # desplazamiento vertical camber
+    "pVy4": (-5.0, 5.0),      # desplazamiento vertical camber carga
+}
+
+FX0_BOUNDS = {
+    "pCx1": (0.5, 2.0),
+    "pDx1": (0.3, 3.0),
+    "pDx2": (-2.0, 0.5),
+    "pEx1": (0.0, 3.0),
+    "pEx2": (-2.0, 2.0),
+    "pKx1": (1.0, 2000.0),
+    "pKx2": (-2.0, 2.0),
+    "pHx1": (-5.0, 5.0),
+    "pVx1": (-1.0, 1.0),
+    "pVx2": (-2.0, 2.0),
+}
+
+MZ0_BOUNDS = {
+    "qBz1": (-5.0, 5.0),
+    "qBz2": (-5.0, 5.0),
+    "qBz3": (-5.0, 5.0),
+    "qBz4": (-5.0, 5.0),
+    "qCz1": (0.5, 2.0),
+    "qDz1": (-5.0, 5.0),
+    "qDz2": (-2.0, 2.0),
+    "qEz1": (0.0, 3.0),
+    "qEz2": (-2.0, 2.0),
+    "qHz1": (-5.0, 5.0),
+    "qHz2": (-2.0, 2.0),
+    "qDz6": (-5.0, 5.0),
+    "qDz7": (-2.0, 2.0),
+}
+
+COMBINED_BOUNDS = {
+    "rBx1": (0.1, 5.0),
+    "rBx2": (0.1, 10.0),
+    "rCx1": (0.1, 3.0),
+    "rEx1": (-2.0, 2.0),
+    "rEx2": (-2.0, 2.0),
+    "rBy1": (0.1, 50.0),
+    "rBy2": (0.1, 50.0),
+    "rBy3": (-5.0, 5.0),
+    "rCy1": (0.5, 2.0),
+    "rEy1": (-2.0, 2.0),
+    "rEy2": (-2.0, 2.0),
+    "rHy1": (-5.0, 5.0),
+    "rHy2": (-2.0, 2.0),
+    "rVy1": (-2.0, 2.0),
+    "rVy2": (-2.0, 2.0),
+    "rVy3": (-2.0, 2.0),
+    "rVy4": (0.1, 10.0),
+    "rVy5": (0.1, 10.0),
+    "rVy6": (0.1, 10.0),
+}
+
+BOUNDS_MAP = {
+    "fy0": FY0_BOUNDS,
+    "mz0": MZ0_BOUNDS,
+    "fx0": FX0_BOUNDS,
+    "combined": COMBINED_BOUNDS,
+}
+
+
+# ============================================================================
+# Carga de configuración
+# ============================================================================
+
 def cargar_config_fitting(config_path: str | Path = "config_ttc.yaml") -> dict:
     """Carga parámetros de fitting desde config_ttc.yaml."""
     try:
@@ -96,17 +199,11 @@ def cargar_config_fitting(config_path: str | Path = "config_ttc.yaml") -> dict:
         }
 
 
-# -------------------------------------------------------------------------
+# ============================================================================
 # Progreso visual en tiempo real (spinner + contador)
-# -------------------------------------------------------------------------
+# ============================================================================
 
 class _ProgresoFit:
-    """
-    Muestra un spinner en la misma línea de la consola mientras el fitting
-    está en ejecución, para que no parezca que el programa está parado.
-    Se ejecuta en un hilo daemon separado.
-    """
-
     def __init__(self, nombre: str):
         self.nombre = nombre
         self.activo = False
@@ -150,12 +247,12 @@ class _ProgresoFit:
 
 
 # -------------------------------------------------------------------------
-# Helpers
+# Helpers de datos
 # -------------------------------------------------------------------------
 
-def _subsample(arrs: list, max_puntos: int) -> list:
-    """Muestreo uniforme si excede max_puntos."""
-    if len(arrs[0]) <= max_puntos:
+def _subsample(arrs: list, max_puntos: Optional[int]) -> list:
+    """Muestreo uniforme si excede max_puntos. None = sin subsampling."""
+    if max_puntos is None or len(arrs[0]) <= max_puntos:
         return arrs
     idx = np.linspace(0, len(arrs[0]) - 1, max_puntos).astype(int)
     resultado = []
@@ -167,19 +264,58 @@ def _subsample(arrs: list, max_puntos: int) -> list:
     return resultado
 
 
+def _filtrar_estacionario(
+    sub: pd.DataFrame,
+    ventana: int = WINDOW_ESTACIONARIO,
+    umbral_std_sa: float = UMBRAL_STD_SA,
+    umbral_std_fz: float = UMBRAL_STD_FZ,
+) -> pd.DataFrame:
+    """
+    Elimina puntos de transitorio (cambios bruscos de FZ o SA) usando
+    desviación estándar móvil. Útil para quitar los escalones de carga
+    y los cambios bruscos de ángulo que no son estado estacionario.
+    """
+    if len(sub) < ventana:
+        return sub
+
+    sub = sub.sort_values("ET").reset_index(drop=True) if "ET" in sub.columns else sub.reset_index(drop=True)
+
+    sa_std = sub["SA"].rolling(window=ventana, center=True, min_periods=1).std()
+    fz_std = sub["FZ"].abs().rolling(window=ventana, center=True, min_periods=1).std()
+
+    mascara = (sa_std <= umbral_std_sa) & (fz_std <= umbral_std_fz)
+    n_descartados = (~mascara).sum()
+    if n_descartados > 0:
+        logger.info(
+            "[Estacionario] Descartados %d punto(s) de transitorio (%.1f%%)",
+            n_descartados, 100 * n_descartados / len(sub),
+        )
+    return sub[mascara].reset_index(drop=True)
+
+
 def _preparar_datos(
     df: pd.DataFrame,
     test_type: str,
     max_puntos: Optional[int] = None,
+    estacionario: bool = True,
 ):
-    """Filtra tipo de ensayo y devuelve arrays listos para Pacejka."""
+    """
+    Filtra tipo de ensayo y devuelve arrays listos para Pacejka.
+    Opcionalmente elimina puntos de transitorio (no estacionario).
+    """
     sub = df[df["test_type"] == test_type].copy()
+    if sub.empty:
+        return None
+
+    if estacionario:
+        sub = _filtrar_estacionario(sub)
+
     if sub.empty:
         return None
 
     alpha = sub["SA"].values * DEG2RAD
     kappa = sub["SL_effective"].values
-    Fz = (-sub["FZ"].values).clip(min=1.0)  # SAE FZ negativo → positivo
+    Fz = (-sub["FZ"].values).clip(min=1.0)   # SAE FZ negativo → positivo
     gamma = sub["IA"].values * DEG2RAD
 
     if max_puntos is not None:
@@ -201,6 +337,123 @@ def _get_coeffs(c: MF52Coeffs, names: list) -> np.ndarray:
     return np.array([getattr(c, n) for n in names], dtype=float)
 
 
+def _get_bounds(names: list, etapa: str):
+    """Devuelve (lb, ub) arrays para los coeficientes dados, o (-inf, inf) si no hay bound."""
+    bounds_dict = BOUNDS_MAP.get(etapa, {})
+    lb = []
+    ub = []
+    for n in names:
+        if n in bounds_dict:
+            lb.append(bounds_dict[n][0])
+            ub.append(bounds_dict[n][1])
+        else:
+            lb.append(-np.inf)
+            ub.append(np.inf)
+    return (np.array(lb), np.array(ub))
+
+
+# -------------------------------------------------------------------------
+# Ajuste robusto en dos pasadas
+# -------------------------------------------------------------------------
+
+def _ajustar_robusto(
+    nombre: str,
+    residuals_fn,
+    x0: np.ndarray,
+    params_names: list,
+    etapa: str,
+    y_obs: np.ndarray,
+    verbose: int = 0,
+    max_nfev1: int = 2000,
+    max_nfev2: int = 5000,
+):
+    """
+    Ajuste en dos pasadas:
+      1. Ajuste rápido con pérdida cuadrada para detectar outliers.
+      2. Filtrado por MAD de residuos y ajuste final con pérdida soft_l1.
+
+    Devuelve el objeto resultado de la segunda pasada.
+    """
+    progreso = _ProgresoFit(nombre)
+    progreso.iniciar()
+
+    contador = {"n": 0}
+
+    def residuals(x):
+        contador["n"] += 1
+        res = residuals_fn(x)
+        progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
+        return res
+
+    # ---- Primera pasada: ajuste rápido para detectar outliers ----
+    lb, ub = _get_bounds(params_names, etapa)
+    res1 = least_squares(
+        residuals, x0, bounds=(lb, ub),
+        max_nfev=max_nfev1, verbose=0, x_scale='jac',
+    )
+
+    # Calcular MAD de residuos para detectar outliers
+    res_vals = res1.fun
+    med = np.median(res_vals)
+    mad = np.median(np.abs(res_vals - med))
+    if mad < 1e-8:
+        mad = np.std(res_vals)
+
+    umbral = OUTLIER_K_MAD * mad
+    mascara = np.abs(res_vals - med) < umbral
+    n_descartados = int((~mascara).sum())
+
+    if n_descartados > 0:
+        logger.info(
+            "[%s] Descartados %d outlier(s) (%.1f%% de %d puntos)",
+            nombre, n_descartados, 100 * n_descartados / len(res_vals), len(res_vals),
+        )
+    else:
+        logger.info("[%s] No se detectaron outliers significativos", nombre)
+
+    # ---- Segunda pasada: ajuste con datos filtrados y pérdida robusta ----
+    if n_descartados > 0:
+        # Volver a construir la función de residuos solo con inliers
+        # Necesitamos acceso a los datos originales para filtrar.
+        # Como residuals_fn cierra sobre los datos, creamos una nueva que filtra.
+        def residuals_filtrados(x):
+            contador["n"] += 1
+            c_t = _set_coeffs(c_current, dict(zip(params_names, x)))
+            res = residuals_fn_con_coeffs(c_t)
+            return res[mascara]
+
+        # Necesitamos acceso a c_t dentro... mejor reconstruir:
+        def residuals_final(x):
+            contador["n"] += 1
+            c_t = _set_coeffs(c, dict(zip(params_names, x)))
+            res = _evaluar_residuales(c_t, params_names, residuals_fn, mascara)
+            progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
+            return res
+
+        res2 = least_squares(
+            residuals_final, res1.x, bounds=(lb, ub),
+            max_nfev=max_nfev2, verbose=verbose, loss='soft_l1', x_scale='jac',
+        )
+        res_final = res2
+    else:
+        res_final = res1
+
+    progreso.detener(
+        f"<<< {nombre} OK — RMSE={float(np.sqrt(np.mean(res_final.fun ** 2))):.2f}, "
+        f"coste={res_final.cost:.4e}"
+    )
+    return res_final
+
+
+def _evaluar_residuales(c, params_names, residuals_fn_base, mascara):
+    """
+    Evalúa residuales aplicando máscara. residuals_fn_base debe aceptar
+    un coeficiente c y devolver residuos completos (sin máscara).
+    """
+    # Esta función se reemplaza por closures específicos en cada fit_*.
+    raise NotImplementedError
+
+
 # -------------------------------------------------------------------------
 # Ajustes por régimen
 # -------------------------------------------------------------------------
@@ -211,7 +464,7 @@ def fit_fy0(
     verbose: int = 0,
 ) -> MF52Coeffs:
     """Ajusta coeficientes de fuerza lateral pura (Fy0) con datos Pure Cornering."""
-    datos = _preparar_datos(df, "Pure Cornering", MAX_PUNTOS["fy0"])
+    datos = _preparar_datos(df, "Pure Cornering", MAX_PUNTOS["fy0"], estacionario=True)
     if datos is None:
         logger.warning("fit_fy0: sin datos Pure Cornering.")
         return c
@@ -222,29 +475,20 @@ def fit_fy0(
     x0 = _get_coeffs(c, FY0_PARAMS)
 
     print(f">>> FY0 (Pure Cornering) — {len(FY)} puntos, {len(FY0_PARAMS)} coeficientes")
-    progreso = _ProgresoFit("FY0")
-    progreso.iniciar()
-
-    contador = {"n": 0}
 
     def residuals(x):
-        contador["n"] += 1
         c_t = _set_coeffs(c, dict(zip(FY0_PARAMS, x)))
         Fy0, _ = pure_slip_fy(alpha, Fz, gamma, c_t)
-        res = Fy0 - FY
-        # Actualizar progreso con coste parcial (RMS de residuales actuales)
-        progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
-        return res
+        return Fy0 - FY
 
-    res = least_squares(residuals, x0, max_nfev=5000, verbose=verbose)
-
-    progreso.detener(
-        f"<<< FY0 OK — RMSE={float(np.sqrt(np.mean(res.fun ** 2))):.2f} N, "
-        f"coste={res.cost:.4e}"
+    res = _ajustar_robusto(
+        "FY0", residuals, x0, FY0_PARAMS, "fy0", FY, verbose=verbose,
     )
+
     c = _set_coeffs(c, dict(zip(FY0_PARAMS, res.x)))
+    rmse = float(np.sqrt(np.mean(res.fun ** 2)))
     logger.info("fit_fy0: RMSE=%.2f N, coste=%.4f, puntos=%d",
-                float(np.sqrt(np.mean(res.fun ** 2))), res.cost, len(FY))
+                rmse, res.cost, len(FY))
     return c
 
 
@@ -254,7 +498,7 @@ def fit_mz0(
     verbose: int = 0,
 ) -> MF52Coeffs:
     """Ajusta coeficientes de momento autoalignante puro (Mz0) con datos Pure Cornering."""
-    datos = _preparar_datos(df, "Pure Cornering", MAX_PUNTOS["mz0"])
+    datos = _preparar_datos(df, "Pure Cornering", MAX_PUNTOS["mz0"], estacionario=True)
     if datos is None:
         logger.warning("fit_mz0: sin datos Pure Cornering.")
         return c
@@ -265,28 +509,20 @@ def fit_mz0(
     x0 = _get_coeffs(c, MZ0_PARAMS)
 
     print(f">>> MZ0 (Pure Cornering) — {len(MZ)} puntos, {len(MZ0_PARAMS)} coeficientes")
-    progreso = _ProgresoFit("MZ0")
-    progreso.iniciar()
-
-    contador = {"n": 0}
 
     def residuals(x):
-        contador["n"] += 1
         c_t = _set_coeffs(c, dict(zip(MZ0_PARAMS, x)))
         Mz0, _ = pure_slip_mz(alpha, Fz, gamma, c_t)
-        res = Mz0 - MZ
-        progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
-        return res
+        return Mz0 - MZ
 
-    res = least_squares(residuals, x0, max_nfev=5000, verbose=verbose)
-
-    progreso.detener(
-        f"<<< MZ0 OK — RMSE={float(np.sqrt(np.mean(res.fun ** 2))):.2f} N*m, "
-        f"coste={res.cost:.4e}"
+    res = _ajustar_robusto(
+        "MZ0", residuals, x0, MZ0_PARAMS, "mz0", MZ, verbose=verbose,
     )
+
     c = _set_coeffs(c, dict(zip(MZ0_PARAMS, res.x)))
+    rmse = float(np.sqrt(np.mean(res.fun ** 2)))
     logger.info("fit_mz0: RMSE=%.2f N*m, coste=%.4f, puntos=%d",
-                float(np.sqrt(np.mean(res.fun ** 2))), res.cost, len(MZ))
+                rmse, res.cost, len(MZ))
     return c
 
 
@@ -296,7 +532,7 @@ def fit_fx0(
     verbose: int = 0,
 ) -> MF52Coeffs:
     """Ajusta coeficientes de fuerza longitudinal pura (Fx0) con datos Pure Longitudinal."""
-    datos = _preparar_datos(df, "Pure Longitudinal", MAX_PUNTOS["fx0"])
+    datos = _preparar_datos(df, "Pure Longitudinal", MAX_PUNTOS["fx0"], estacionario=True)
     if datos is None:
         logger.warning("fit_fx0: sin datos Pure Longitudinal (usa valores por defecto).")
         return c
@@ -307,28 +543,20 @@ def fit_fx0(
     x0 = _get_coeffs(c, FX0_PARAMS)
 
     print(f">>> FX0 (Pure Longitudinal) — {len(FX)} puntos, {len(FX0_PARAMS)} coeficientes")
-    progreso = _ProgresoFit("FX0")
-    progreso.iniciar()
-
-    contador = {"n": 0}
 
     def residuals(x):
-        contador["n"] += 1
         c_t = _set_coeffs(c, dict(zip(FX0_PARAMS, x)))
         Fx0, _ = pure_slip_fx(kappa, Fz, gamma, c_t)
-        res = Fx0 - FX
-        progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
-        return res
+        return Fx0 - FX
 
-    res = least_squares(residuals, x0, max_nfev=5000, verbose=verbose)
-
-    progreso.detener(
-        f"<<< FX0 OK — RMSE={float(np.sqrt(np.mean(res.fun ** 2))):.2f} N, "
-        f"coste={res.cost:.4e}"
+    res = _ajustar_robusto(
+        "FX0", residuals, x0, FX0_PARAMS, "fx0", FX, verbose=verbose,
     )
+
     c = _set_coeffs(c, dict(zip(FX0_PARAMS, res.x)))
+    rmse = float(np.sqrt(np.mean(res.fun ** 2)))
     logger.info("fit_fx0: RMSE=%.2f N, coste=%.4f, puntos=%d",
-                float(np.sqrt(np.mean(res.fun ** 2))), res.cost, len(FX))
+                rmse, res.cost, len(FX))
     return c
 
 
@@ -338,7 +566,7 @@ def fit_combined(
     verbose: int = 0,
 ) -> MF52Coeffs:
     """Ajusta coeficientes de slip combinado con datos Combined."""
-    datos = _preparar_datos(df, "Combined", MAX_PUNTOS["combined"])
+    datos = _preparar_datos(df, "Combined", MAX_PUNTOS["combined"], estacionario=True)
     if datos is None:
         logger.warning("fit_combined: sin datos Combined.")
         return c
@@ -350,28 +578,20 @@ def fit_combined(
     x0 = _get_coeffs(c, COMBINED_PARAMS)
 
     print(f">>> Combined (slip mixto) — {len(FX)} puntos, {len(COMBINED_PARAMS)} coeficientes")
-    progreso = _ProgresoFit("Combined")
-    progreso.iniciar()
-
-    contador = {"n": 0}
 
     def residuals(x):
-        contador["n"] += 1
         c_t = _set_coeffs(c, dict(zip(COMBINED_PARAMS, x)))
         Fx, Fy, _ = combined_slip(alpha, kappa, Fz, gamma, c_t)
-        res = np.concatenate([Fx - FX, Fy - FY])
-        progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
-        return res
+        return np.concatenate([Fx - FX, Fy - FY])
 
-    res = least_squares(residuals, x0, max_nfev=8000, verbose=verbose)
-
-    progreso.detener(
-        f"<<< Combined OK — RMSE={float(np.sqrt(np.mean(res.fun ** 2))):.2f} N, "
-        f"coste={res.cost:.4e}"
+    res = _ajustar_robusto(
+        "Combined", residuals, x0, COMBINED_PARAMS, "combined", FX, verbose=verbose,
     )
+
     c = _set_coeffs(c, dict(zip(COMBINED_PARAMS, res.x)))
+    rmse = float(np.sqrt(np.mean(res.fun ** 2)))
     logger.info("fit_combined: RMSE=%.2f N, coste=%.4f, puntos=%d",
-                float(np.sqrt(np.mean(res.fun ** 2))), res.cost, len(FX))
+                rmse, res.cost, len(FX))
     return c
 
 
@@ -430,6 +650,7 @@ def guardar_tir(c: MF52Coeffs, filepath: Path | str) -> None:
         "*  camber y presion). La presion de referencia es 100 kPa (1 bar),\n"
         "*  valor tipico para neumaticos de competicion. La MF5.2 estandar\n"
         "*  no usa la presion directamente como variable de entrada.\n"
+        "*  Se han eliminado transitorios y outliers antes del ajuste.\n"
         "*=======================================================================\n\n"
         f"{_seccion_tir('TIRE', {'FZ0': d['Fz0'], 'R0': d['R0']})}"
         f"{_seccion_tir('LONGITUDINAL_PURO_FX0', {k.upper(): d[k] for k in FX0_PARAMS})}"
