@@ -63,12 +63,13 @@ COMBINED_PARAMS = [
 ]
 
 # Puntos máximos por etapa (subsampling para velocidad)
+# None = usar todos los datos (sin downsampling)
 # Valores por defecto; se sobrescriben si se pasa config_ttc.yaml
 MAX_PUNTOS = {
-    "fy0": 200_000,
-    "mz0": 60_000,
-    "fx0": 100_000,
-    "combined": 60_000,
+    "fy0": None,
+    "mz0": None,
+    "fx0": None,
+    "combined": None,
 }
 
 

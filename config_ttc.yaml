@@ -16,8 +16,10 @@ clasificacion:
   sa_mediana_recta: 1.0
 
 fitting:
-  max_puntos_fy0: 200000
-  max_puntos_mz0: 60000
-  max_puntos_fx0: 100000
-  max_puntos_combined: 60000
+  # max_puntos_*: None = usar todos los datos (sin downsampling)
+  # Se recomienda dejar a None si se tiene CPU potente (ej. Ryzen 7 5700X)
+  max_puntos_fy0: null
+  max_puntos_mz0: null
+  max_puntos_fx0: null
+  max_puntos_combined: null
   verbose: 0
