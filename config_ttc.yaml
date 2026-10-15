@@ -2,6 +2,22 @@ paths:
   data_dir: "data"
   results_dir: "results"
   plots_dir: "plots"
-  
+
 settings:
   file_pattern: "*.dat"
+
+warmup:
+  fraccion_parado: 0.90
+  max_sa_grado: 1.0
+  max_std_sl: 0.01
+
+clasificacion:
+  sl_dispersion_baja: 0.035
+  sa_mediana_recta: 1.0
+
+fitting:
+  max_puntos_fy0: 200000
+  max_puntos_mz0: 60000
+  max_puntos_fx0: 100000
+  max_puntos_combined: 60000
+  verbose: 0
