@@ -680,23 +680,24 @@ INCLINATION_ANGLE_RANGE_VALUES = {
 
 # Coeficientes MF5.2 que NO están en las listas de parámetros pero que
 # se pueden ajustar o tener valores por defecto razonables.
-# Se usa el valor de MF52Coeffs si existe, si no el valor por defecto.
+# Se usa el valor de MF52Coeffs si existe, si no el valor por defecto
+# del neumático Hoosier 16x7.5 (results/Hoosier_16x7.5_ETSEIB.tir).
 MF52_DEFAULT_VALUES = {
     # [TIRE]
     "FZ0": 4500.0,
     "R0": 0.3,
-    # Longitudinal coeficientes no en FX0_PARAMS
-    "PDX3": 19.26,
-    "PPX1": -0.7053,
-    "PPX2": -0.5895,
-    "PPX3": -0.2428,
-    "PPX4": 0.2052,
+    # [LONGITUDINAL_COEFFICIENTS]
+    "PDX3": 19.2614164371048,
+    "PPX1": -0.705319191164713,
+    "PPX2": -0.589490385312056,
+    "PPX3": -0.242820291164767,
+    "PPX4": 0.205179565555030,
     "PVX3": 0.0,
     "PVX4": 0.0,
     "RBX3": 0.0,
     "RHX2": 0.0,
-    # Lateral coeficientes no en FY0_PARAMS
-    "PDY3": 9.70,
+    # [LATERAL_COEFFICIENTS]
+    "PDY3": 9.699367924763585,
     "PEY5": 0.0,
     "PKY4": 2.0,
     "PKY5": 0.0,
@@ -705,7 +706,7 @@ MF52_DEFAULT_VALUES = {
     "PHY3": 0.0,
     "PPY5": 0.0,
     "RBY4": 0.0,
-    # Aligning coeficientes no en MZ0_PARAMS
+    # [ALIGNING_COEFFICIENTS]
     "QBZ5": 4.954,
     "QBZ9": 16.725,
     "QBZ10": 0.809,
@@ -718,7 +719,7 @@ MF52_DEFAULT_VALUES = {
     "QHZ4": -0.332,
     "PPZ1": 0.0,
     "PPZ2": 0.0,
-    # Factores de escala lambda no en MF52Coeffs por defecto
+    # [SCALING_COEFFICIENTS] - valores reales del Hoosier 16x7.5
     "LGAMMAX": 1.0,
     "LGAMMAY": 1.0,
     "LGAMMAZ": 1.0,
@@ -734,7 +735,7 @@ MF52_DEFAULT_VALUES = {
     "LMX": 1.0,
     "LMY": 1.0,
     "LMP": 1.0,
-    # Overturning
+    # [OVERTURNING_COEFFICIENTS]
     "QSX1": -0.0227,
     "QSX2": 2.1630,
     "QSX3": 0.3030,
@@ -750,7 +751,7 @@ MF52_DEFAULT_VALUES = {
     "QSX13": 0.0,
     "QSX14": 0.0,
     "PPMX1": 0.4034,
-    # Rolling
+    # [ROLLING_COEFFICIENTS]
     "QSY1": 0.01,
     "QSY2": 0.0,
     "QSY3": 0.0004,
@@ -759,7 +760,7 @@ MF52_DEFAULT_VALUES = {
     "QSY6": 0.0,
     "QSY7": 0.0,
     "QSY8": 0.0,
-    # Turnslip - todos cero
+    # [TURNSLIP_COEFFICIENTS] - todos cero
     "PDXP1": 0.0,
     "PDXP2": 0.0,
     "PDXP3": 0.0,
