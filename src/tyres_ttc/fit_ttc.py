@@ -22,7 +22,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -358,11 +358,11 @@ def _get_bounds(names: list, etapa: str):
 
 def _ajustar_robusto(
     nombre: str,
-    residuals_fn,
+    c: MF52Coeffs,
     x0: np.ndarray,
     params_names: list,
     etapa: str,
-    y_obs: np.ndarray,
+    residual_builder: Callable[[MF52Coeffs], np.ndarray],
     verbose: int = 0,
     max_nfev1: int = 2000,
     max_nfev2: int = 5000,
@@ -372,7 +372,24 @@ def _ajustar_robusto(
       1. Ajuste rápido con pérdida cuadrada para detectar outliers.
       2. Filtrado por MAD de residuos y ajuste final con pérdida soft_l1.
 
-    Devuelve el objeto resultado de la segunda pasada.
+    Parameters
+    ----------
+    nombre : str
+        Nombre de la etapa (para logs y progreso).
+    c : MF52Coeffs
+        Coeficientes actuales (se mutan con el resultado).
+    x0 : np.ndarray
+        Valores iniciales de los coeficientes a ajustar.
+    params_names : list
+        Nombres de los coeficientes a ajustar (en orden de x).
+    etapa : str
+        Clave para buscar bounds ('fy0', 'mz0', 'fx0', 'combined').
+    residual_builder : callable
+        Función que recibe un MF52Coeffs y devuelve el array de residuales.
+    verbose : int
+        Nivel de verbosidad de scipy (0 = silencioso).
+    max_nfev1, max_nfev2 : int
+        Máximo número de evaluaciones en pasada 1 y 2.
     """
     progreso = _ProgresoFit(nombre)
     progreso.iniciar()
@@ -381,7 +398,8 @@ def _ajustar_robusto(
 
     def residuals(x):
         contador["n"] += 1
-        res = residuals_fn(x)
+        c_t = _set_coeffs(c, dict(zip(params_names, x)))
+        res = residual_builder(c_t)
         progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
         return res
 
@@ -413,25 +431,14 @@ def _ajustar_robusto(
 
     # ---- Segunda pasada: ajuste con datos filtrados y pérdida robusta ----
     if n_descartados > 0:
-        # Volver a construir la función de residuos solo con inliers
-        # Necesitamos acceso a los datos originales para filtrar.
-        # Como residuals_fn cierra sobre los datos, creamos una nueva que filtra.
         def residuals_filtrados(x):
             contador["n"] += 1
-            c_t = _set_coeffs(c_current, dict(zip(params_names, x)))
-            res = residuals_fn_con_coeffs(c_t)
+            c_t = _set_coeffs(c, dict(zip(params_names, x)))
+            res = residual_builder(c_t)
             return res[mascara]
 
-        # Necesitamos acceso a c_t dentro... mejor reconstruir:
-        def residuals_final(x):
-            contador["n"] += 1
-            c_t = _set_coeffs(c, dict(zip(params_names, x)))
-            res = _evaluar_residuales(c_t, params_names, residuals_fn, mascara)
-            progreso.actualizar(contador["n"], float(np.sqrt(np.mean(res ** 2))))
-            return res
-
         res2 = least_squares(
-            residuals_final, res1.x, bounds=(lb, ub),
+            residuals_filtrados, res1.x, bounds=(lb, ub),
             max_nfev=max_nfev2, verbose=verbose, loss='soft_l1', x_scale='jac',
         )
         res_final = res2
@@ -443,15 +450,6 @@ def _ajustar_robusto(
         f"coste={res_final.cost:.4e}"
     )
     return res_final
-
-
-def _evaluar_residuales(c, params_names, residuals_fn_base, mascara):
-    """
-    Evalúa residuales aplicando máscara. residuals_fn_base debe aceptar
-    un coeficiente c y devolver residuos completos (sin máscara).
-    """
-    # Esta función se reemplaza por closures específicos en cada fit_*.
-    raise NotImplementedError
 
 
 # -------------------------------------------------------------------------
@@ -476,13 +474,12 @@ def fit_fy0(
 
     print(f">>> FY0 (Pure Cornering) — {len(FY)} puntos, {len(FY0_PARAMS)} coeficientes")
 
-    def residuals(x):
-        c_t = _set_coeffs(c, dict(zip(FY0_PARAMS, x)))
+    def residual_builder(c_t: MF52Coeffs) -> np.ndarray:
         Fy0, _ = pure_slip_fy(alpha, Fz, gamma, c_t)
         return Fy0 - FY
 
     res = _ajustar_robusto(
-        "FY0", residuals, x0, FY0_PARAMS, "fy0", FY, verbose=verbose,
+        "FY0", c, x0, FY0_PARAMS, "fy0", residual_builder, verbose=verbose,
     )
 
     c = _set_coeffs(c, dict(zip(FY0_PARAMS, res.x)))
@@ -510,13 +507,12 @@ def fit_mz0(
 
     print(f">>> MZ0 (Pure Cornering) — {len(MZ)} puntos, {len(MZ0_PARAMS)} coeficientes")
 
-    def residuals(x):
-        c_t = _set_coeffs(c, dict(zip(MZ0_PARAMS, x)))
+    def residual_builder(c_t: MF52Coeffs) -> np.ndarray:
         Mz0, _ = pure_slip_mz(alpha, Fz, gamma, c_t)
         return Mz0 - MZ
 
     res = _ajustar_robusto(
-        "MZ0", residuals, x0, MZ0_PARAMS, "mz0", MZ, verbose=verbose,
+        "MZ0", c, x0, MZ0_PARAMS, "mz0", residual_builder, verbose=verbose,
     )
 
     c = _set_coeffs(c, dict(zip(MZ0_PARAMS, res.x)))
@@ -544,13 +540,12 @@ def fit_fx0(
 
     print(f">>> FX0 (Pure Longitudinal) — {len(FX)} puntos, {len(FX0_PARAMS)} coeficientes")
 
-    def residuals(x):
-        c_t = _set_coeffs(c, dict(zip(FX0_PARAMS, x)))
+    def residual_builder(c_t: MF52Coeffs) -> np.ndarray:
         Fx0, _ = pure_slip_fx(kappa, Fz, gamma, c_t)
         return Fx0 - FX
 
     res = _ajustar_robusto(
-        "FX0", residuals, x0, FX0_PARAMS, "fx0", FX, verbose=verbose,
+        "FX0", c, x0, FX0_PARAMS, "fx0", residual_builder, verbose=verbose,
     )
 
     c = _set_coeffs(c, dict(zip(FX0_PARAMS, res.x)))
@@ -579,13 +574,12 @@ def fit_combined(
 
     print(f">>> Combined (slip mixto) — {len(FX)} puntos, {len(COMBINED_PARAMS)} coeficientes")
 
-    def residuals(x):
-        c_t = _set_coeffs(c, dict(zip(COMBINED_PARAMS, x)))
+    def residual_builder(c_t: MF52Coeffs) -> np.ndarray:
         Fx, Fy, _ = combined_slip(alpha, kappa, Fz, gamma, c_t)
         return np.concatenate([Fx - FX, Fy - FY])
 
     res = _ajustar_robusto(
-        "Combined", residuals, x0, COMBINED_PARAMS, "combined", FX, verbose=verbose,
+        "Combined", c, x0, COMBINED_PARAMS, "combined", residual_builder, verbose=verbose,
     )
 
     c = _set_coeffs(c, dict(zip(COMBINED_PARAMS, res.x)))
