@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tyres-ttc"
+version = "0.1.0"
+description = "In-house software to process, clean, and visualize tire data from the Tyre Test Consortium (TTC). Designed for FSAE vehicle dynamics."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Roger Viñals", email = "roger@example.com"},
+]
+license = {text = "GPL-3.0-only"}
+keywords = ["tyre", "tire", "magic-formula", "pacejka", "fsae", "vehicle-dynamics", "ttc"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "flake8",
+    "mypy",
+]
+docs = [
+    "mkdocs>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tyres_ttc*"]
+
+[tool.setuptools.package-data]
+tyres_ttc = ["*.pyi"]
