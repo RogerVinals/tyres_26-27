@@ -14,6 +14,8 @@ Mejoras respecto a la versión inicial:
   * Ajuste en dos pasadas con eliminación de outliers basada en MAD.
   * Función de pérdida robusta (soft_l1) para que los errores grandes no dominen.
   * Bounds físicos y x_scale='jac' para evitar mínimos locales y mejorar convergencia.
+  * Salida .tir con formato IPG Carmaker completo (dimensiones fijas, coeficientes
+    MF5.2 desde el objeto ajustado, valores por defecto para lo restante).
 """
 
 from __future__ import annotations
@@ -630,46 +632,109 @@ def _seccion_tir(nombre: str, items: dict) -> str:
 
 
 # -------------------------------------------------------------------------
-# Mapeo de coeficientes MF52Coeffs -> nombres del archivo .tir
-# Cualquier coeficiente que NO exista en MF52Coeffs se rellena con un valor
-# por defecto razonable para que el archivo .tir esté completo y sea legible
-# por IPG Carmaker.
+# Valores por defecto para secciones NO-MF5.2 (dimensiones, presiones, etc.)
+# Estos NO provienen de MF52Coeffs, son valores fijos del neumático.
 # -------------------------------------------------------------------------
 
-# Valores por defecto para coeficientes que NO están en MF52Coeffs
-VALORES_POR_DEFECTO = {
-    # [TIRE]
-    "FZ0": 4500.0,
-    "R0": 0.3,
-    # [DIMENSION]
+DIMENSION_VALUES = {
     "UNLOADED_RADIUS": 0.2032,
     "WIDTH": 0.1905,
     "ASPECT_RATIO": 0.4,
     "RIM_RADIUS": 0.127,
     "RIM_WIDTH": 0.1778,
-    # [OPERATING_CONDITIONS]
+}
+
+OPERATING_CONDITIONS_VALUES = {
     "INFPRES": 82737.0,
     "NOMPRES": 82737.0,
-    # [VERTICAL]
+}
+
+VERTICAL_VALUES = {
     "VERTICAL_STIFFNES": 132500.0,
     "VERTICAL_DAMPING": 50.0,
     "BREFF": 8.0,
     "DREFF": 0.24,
     "FREFF": 0.01,
     "FNOMIN": 1000.0,
-    # [VERTICAL_FORCE_RANGE]
+}
+
+VERTICAL_FORCE_RANGE_VALUES = {
     "FZMIN": 0.0,
     "FZMAX": 1800.0,
-    # [LONG_SLIP_RANGE]
+}
+
+LONG_SLIP_RANGE_VALUES = {
     "KPUMIN": -1.0,
     "KPUMAX": 1.0,
-    # [SLIP_ANGLE_RANGE]
+}
+
+SLIP_ANGLE_RANGE_VALUES = {
     "ALPMIN": -0.96,
     "ALPMAX": 0.96,
-    # [INCLINATION_ANGLE_RANGE]
+}
+
+INCLINATION_ANGLE_RANGE_VALUES = {
     "CAMMIN": -0.105,
     "CAMMAX": 0.105,
-    # [OVERTURNING_COEFFICIENTS] - valores típicos si no se ajustan
+}
+
+# Coeficientes MF5.2 que NO están en las listas de parámetros pero que
+# se pueden ajustar o tener valores por defecto razonables.
+# Se usa el valor de MF52Coeffs si existe, si no el valor por defecto.
+MF52_DEFAULT_VALUES = {
+    # [TIRE]
+    "FZ0": 4500.0,
+    "R0": 0.3,
+    # Longitudinal coeficientes no en FX0_PARAMS
+    "PDX3": 19.26,
+    "PPX1": -0.7053,
+    "PPX2": -0.5895,
+    "PPX3": -0.2428,
+    "PPX4": 0.2052,
+    "PVX3": 0.0,
+    "PVX4": 0.0,
+    "RBX3": 0.0,
+    "RHX2": 0.0,
+    # Lateral coeficientes no en FY0_PARAMS
+    "PDY3": 9.70,
+    "PEY5": 0.0,
+    "PKY4": 2.0,
+    "PKY5": 0.0,
+    "PKY6": 0.0,
+    "PKY7": 0.0,
+    "PHY3": 0.0,
+    "PPY5": 0.0,
+    "RBY4": 0.0,
+    # Aligning coeficientes no en MZ0_PARAMS
+    "QBZ5": 4.954,
+    "QBZ9": 16.725,
+    "QBZ10": 0.809,
+    "QDZ5": -19.378,
+    "QDZ8": -2.229,
+    "QDZ9": 0.61,
+    "QDZ10": 0.0,
+    "QDZ11": 0.0,
+    "QHZ3": -0.332,
+    "QHZ4": -0.332,
+    "PPZ1": 0.0,
+    "PPZ2": 0.0,
+    # Factores de escala lambda no en MF52Coeffs por defecto
+    "LGAMMAX": 1.0,
+    "LGAMMAY": 1.0,
+    "LGAMMAZ": 1.0,
+    "LT": 1.0,
+    "LR": 1.0,
+    "LXAL": 1.0,
+    "LYKA": 1.0,
+    "LVYKA": 1.0,
+    "LS": 1.0,
+    "LKYC": 1.07,
+    "LKZC": 1.0,
+    "LVMX": 1.0,
+    "LMX": 1.0,
+    "LMY": 1.0,
+    "LMP": 1.0,
+    # Overturning
     "QSX1": -0.0227,
     "QSX2": 2.1630,
     "QSX3": 0.3030,
@@ -685,7 +750,7 @@ VALORES_POR_DEFECTO = {
     "QSX13": 0.0,
     "QSX14": 0.0,
     "PPMX1": 0.4034,
-    # [ROLLING_COEFFICIENTS]
+    # Rolling
     "QSY1": 0.01,
     "QSY2": 0.0,
     "QSY3": 0.0004,
@@ -694,7 +759,7 @@ VALORES_POR_DEFECTO = {
     "QSY6": 0.0,
     "QSY7": 0.0,
     "QSY8": 0.0,
-    # [TURNSLIP_COEFFICIENTS] - todos cero
+    # Turnslip - todos cero
     "PDXP1": 0.0,
     "PDXP2": 0.0,
     "PDXP3": 0.0,
@@ -714,63 +779,19 @@ VALORES_POR_DEFECTO = {
     "QCRP2": 0.0,
     "QBRP1": 0.0,
     "QDRP1": 0.0,
-    # Longitudinal coeficientes que no están en FY0_PARAMS/FX0_PARAMS
-    "PDX3": 19.26,
-    "PPX1": -0.7053,
-    "PPX2": -0.5895,
-    "PPX3": -0.2428,
-    "PPX4": 0.2052,
-    "PVX3": 0.0,
-    "PVX4": 0.0,
-    "RBX3": 0.0,
-    "RHX2": 0.0,
-    # Lateral coeficientes que no están en FY0_PARAMS
-    "PDY3": 9.70,
-    "PEY5": 0.0,
-    "PKY4": 2.0,
-    "PKY5": 0.0,
-    "PKY6": 0.0,
-    "PKY7": 0.0,
-    "PHY3": 0.0,
-    "PPY5": 0.0,
-    "RBY4": 0.0,
-    # Aligning coeficientes que no están en MZ0_PARAMS
-    "QBZ5": 4.954,
-    "QBZ9": 16.725,
-    "QBZ10": 0.809,
-    "QDZ5": -19.378,
-    "QDZ8": -2.229,
-    "QDZ9": 0.61,
-    "QDZ10": 0.0,
-    "QDZ11": 0.0,
-    "QHZ3": -0.332,
-    "QHZ4": -0.332,
-    "PPZ1": 0.0,
-    "PPZ2": 0.0,
-    # Factores de escala lambda que no están en la lista actual
-    "LGAMMAX": 1.0,
-    "LGAMMAY": 1.0,
-    "LGAMMAZ": 1.0,
-    "LT": 1.0,
-    "LR": 1.0,
-    "LXAL": 1.0,
-    "LYKA": 1.0,
-    "LVYKA": 1.0,
-    "LS": 1.0,
-    "LKYC": 1.07,
-    "LKZC": 1.0,
-    "LVMX": 1.0,
-    "LMX": 1.0,
-    "LMY": 1.0,
-    "LMP": 1.0,
 }
 
 
-def _obtener_valor(d: dict, clave: str, default: float = 0.0) -> float:
-    """Devuelve el valor de d[clave] si existe, si no el valor por defecto."""
+def _obtener_valor_mf52(d: dict, clave: str, default: float = 0.0) -> float:
+    """Devuelve el valor de un coeficiente MF5.2 del diccionario d, o el valor por defecto."""
     if clave in d:
         return float(d[clave])
-    return float(VALORES_POR_DEFECTO.get(clave, default))
+    return float(MF52_DEFAULT_VALUES.get(clave, default))
+
+
+def _obtener_valor_fijo(valores: dict, clave: str) -> float:
+    """Devuelve un valor fijo de dimensión/parámetro (NO proviene de MF52Coeffs)."""
+    return float(valores.get(clave, 0.0))
 
 
 def guardar_tir(c: MF52Coeffs, filepath: Path | str) -> None:
@@ -778,6 +799,35 @@ def guardar_tir(c: MF52Coeffs, filepath: Path | str) -> None:
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
     d = c.as_dict()
+
+    # Dimensiones y parámetros no-MF5.2: SIEMPRE valores fijos, nunca de d
+    unloaded_radius = _obtener_valor_fijo(DIMENSION_VALUES, "UNLOADED_RADIUS")
+    width = _obtener_valor_fijo(DIMENSION_VALUES, "WIDTH")
+    aspect_ratio = _obtener_valor_fijo(DIMENSION_VALUES, "ASPECT_RATIO")
+    rim_radius = _obtener_valor_fijo(DIMENSION_VALUES, "RIM_RADIUS")
+    rim_width = _obtener_valor_fijo(DIMENSION_VALUES, "RIM_WIDTH")
+
+    infpres = _obtener_valor_fijo(OPERATING_CONDITIONS_VALUES, "INFPRES")
+    nompres = _obtener_valor_fijo(OPERATING_CONDITIONS_VALUES, "NOMPRES")
+
+    vertical_stiffnes = _obtener_valor_fijo(VERTICAL_VALUES, "VERTICAL_STIFFNES")
+    vertical_damping = _obtener_valor_fijo(VERTICAL_VALUES, "VERTICAL_DAMPING")
+    breff = _obtener_valor_fijo(VERTICAL_VALUES, "BREFF")
+    dreff = _obtener_valor_fijo(VERTICAL_VALUES, "DREFF")
+    freff = _obtener_valor_fijo(VERTICAL_VALUES, "FREFF")
+    fnom = _obtener_valor_fijo(VERTICAL_VALUES, "FNOMIN")
+
+    fzmin = _obtener_valor_fijo(VERTICAL_FORCE_RANGE_VALUES, "FZMIN")
+    fzmax = _obtener_valor_fijo(VERTICAL_FORCE_RANGE_VALUES, "FZMAX")
+
+    kpumin = _obtener_valor_fijo(LONG_SLIP_RANGE_VALUES, "KPUMIN")
+    kpumax = _obtener_valor_fijo(LONG_SLIP_RANGE_VALUES, "KPUMAX")
+
+    alpmin = _obtener_valor_fijo(SLIP_ANGLE_RANGE_VALUES, "ALPMIN")
+    alpmax = _obtener_valor_fijo(SLIP_ANGLE_RANGE_VALUES, "ALPMAX")
+
+    cammin = _obtener_valor_fijo(INCLINATION_ANGLE_RANGE_VALUES, "CAMMIN")
+    cammax = _obtener_valor_fijo(INCLINATION_ANGLE_RANGE_VALUES, "CAMMAX")
 
     contenido = (
         "*=======================================================================\n"
@@ -804,25 +854,25 @@ def guardar_tir(c: MF52Coeffs, filepath: Path | str) -> None:
         "VXLOW                        = 1                 \n"
         "$-------------------------------------------------------------dimension\n"
         "[DIMENSION]\n"
-        f"UNLOADED_RADIUS              = {_obtener_valor(d, 'FZ0', 0.2032):.6f}   \n"
-        f"WIDTH                        = {_obtener_valor(d, 'FZ0', 0.1905):.6f}   \n"
-        f"ASPECT_RATIO                 = {_obtener_valor(d, 'FZ0', 0.4):.6f}      \n"
-        f"RIM_RADIUS                   = {_obtener_valor(d, 'FZ0', 0.127):.6f}    \n"
-        f"RIM_WIDTH                    = {_obtener_valor(d, 'FZ0', 0.1778):.6f}   \n"
+        f"UNLOADED_RADIUS              = {unloaded_radius:.6f}   \n"
+        f"WIDTH                        = {width:.6f}   \n"
+        f"ASPECT_RATIO                 = {aspect_ratio:.6f}      \n"
+        f"RIM_RADIUS                   = {rim_radius:.6f}    \n"
+        f"RIM_WIDTH                    = {rim_width:.6f}   \n"
         "$--------------------------------------------------operating conditions\n"
         "[OPERATING_CONDITIONS]\n"
-        f"INFPRES                      = {_obtener_valor(d, 'INFPRES', 82737.0):.4f}    \n"
-        f"NOMPRES                      = {_obtener_valor(d, 'NOMPRES', 82737.0):.4f}    \n"
+        f"INFPRES                      = {infpres:.4f}    \n"
+        f"NOMPRES                      = {nompres:.4f}    \n"
         "$---------------------------------------------------------------inertia\n"
         "[INERTIA]\n"
         "$--------------------------------------------------------------vertical\n"
         "[VERTICAL]\n"
-        f"VERTICAL_STIFFNES            = {_obtener_valor(d, 'VERTICAL_STIFFNES', 132500.0):.1f}   \n"
-        f"VERTICAL_DAMPING             = {_obtener_valor(d, 'VERTICAL_DAMPING', 50.0):.1f}   \n"
-        f"BREFF                        = {_obtener_valor(d, 'BREFF', 8.0):.1f}   \n"
-        f"DREFF                        = {_obtener_valor(d, 'DREFF', 0.24):.2f}   \n"
-        f"FREFF                        = {_obtener_valor(d, 'FREFF', 0.01):.2f}   \n"
-        f"FNOMIN                       = {_obtener_valor(d, 'FNOMIN', 1000.0):.0f}   \n"
+        f"VERTICAL_STIFFNES            = {vertical_stiffnes:.1f}   \n"
+        f"VERTICAL_DAMPING             = {vertical_damping:.1f}   \n"
+        f"BREFF                        = {breff:.1f}   \n"
+        f"DREFF                        = {dreff:.2f}   \n"
+        f"FREFF                        = {freff:.2f}   \n"
+        f"FNOMIN                       = {fnom:.0f}   \n"
         "$--------------------------------------------------structural\n"
         "[STRUCTURAL]\n"
         "$---------------------------------------------------------contact patch\n"
@@ -831,210 +881,210 @@ def guardar_tir(c: MF52Coeffs, filepath: Path | str) -> None:
         "[INFLATION_PRESSURE_RANGE]\n"
         "$--------------------------------------------------vertical force range\n"
         "[VERTICAL_FORCE_RANGE]\n"
-        f"FZMIN                        = {_obtener_valor(d, 'FZMIN', 0.0):.1f}   \n"
-        f"FZMAX                        = {_obtener_valor(d, 'FZMAX', 1800.0):.1f}   \n"
+        f"FZMIN                        = {fzmin:.1f}   \n"
+        f"FZMAX                        = {fzmax:.1f}   \n"
         "$-------------------------------------------------------long slip range\n"
         "[LONG_SLIP_RANGE]\n"
-        f"KPUMIN                       = {_obtener_valor(d, 'KPUMIN', -1.0):.1f}   \n"
-        f"KPUMAX                       = {_obtener_valor(d, 'KPUMAX', 1.0):.1f}   \n"
+        f"KPUMIN                       = {kpumin:.1f}   \n"
+        f"KPUMAX                       = {kpumax:.1f}   \n"
         "$------------------------------------------------------slip angle range\n"
         "[SLIP_ANGLE_RANGE]\n"
-        f"ALPMIN                       = {_obtener_valor(d, 'ALPMIN', -0.96):.2f}   \n"
-        f"ALPMAX                       = {_obtener_valor(d, 'ALPMAX', 0.96):.2f}   \n"
+        f"ALPMIN                       = {alpmin:.2f}   \n"
+        f"ALPMAX                       = {alpmax:.2f}   \n"
         "$-----------------------------------------------inclination angle range\n"
         "[INCLINATION_ANGLE_RANGE]\n"
-        f"CAMMIN                       = {_obtener_valor(d, 'CAMMIN', -0.105):.3f}   \n"
-        f"CAMMAX                       = {_obtener_valor(d, 'CAMMAX', 0.105):.3f}   \n"
+        f"CAMMIN                       = {cammin:.3f}   \n"
+        f"CAMMAX                       = {cammax:.3f}   \n"
         "$--------------------------------------------------scaling coefficients\n"
         "[SCALING_COEFFICIENTS]\n"
-        f"LFZ0                         = {_obtener_valor(d, 'lFz0', 1.0):.3f}                 \n"
-        f"LCX                          = {_obtener_valor(d, 'lCx', 1.0):.3f}                  \n"
-        f"LMUX                         = {_obtener_valor(d, 'lMUx', 1.0):.3f}                 \n"
-        f"LEX                          = {_obtener_valor(d, 'lEx', 1.0):.3f}                 \n"
-        f"LKX                          = {_obtener_valor(d, 'lKx', 1.0):.3f}                  \n"
-        f"LHX                          = {_obtener_valor(d, 'lHx', 1.0):.3f}                  \n"
-        f"LVX                          = {_obtener_valor(d, 'lVx', 1.0):.3f}                 \n"
-        f"LGAMMAX                      = {_obtener_valor(d, 'lGammax', 1.0):.3f}                 \n"
-        f"LCY                          = {_obtener_valor(d, 'lCy', 1.0):.3f}                 \n"
-        f"LMUY                         = {_obtener_valor(d, 'lMUy', 1.0):.3f}                  \n"
-        f"LEY                          = {_obtener_valor(d, 'lEy', 1.0):.3f}                 \n"
-        f"LKY                          = {_obtener_valor(d, 'lKy', 1.0):.3f}                  \n"
-        f"LHY                          = {_obtener_valor(d, 'lHy', 1.0):.3f}                  \n"
-        f"LVY                          = {_obtener_valor(d, 'lVy', 1.0):.3f}                 \n"
-        f"LGAMMAY                      = {_obtener_valor(d, 'lGammay', 1.0):.3f}                 \n"
-        f"LGAMMAZ                      = {_obtener_valor(d, 'lGammaz', 1.0):.3f}                 \n"
-        f"LT                           = {_obtener_valor(d, 'lt', 1.0):.3f}                  \n"
-        f"LR                           = {_obtener_valor(d, 'lr', 1.0):.3f}                  \n"
-        f"LXAL                         = {_obtener_valor(d, 'lXal', 1.0):.3f}                  \n"
-        f"LYKA                         = {_obtener_valor(d, 'lYka', 1.0):.3f}                  \n"
-        f"LVYKA                        = {_obtener_valor(d, 'lVyka', 1.0):.3f}                 \n"
-        f"LS                           = {_obtener_valor(d, 'ls', 1.0):.3f}                \n"
-        f"LKYC                         = {_obtener_valor(d, 'lKYc', 1.07):.3f}                 \n"
-        f"LKZC                         = {_obtener_valor(d, 'lKZc', 1.0):.3f}                 \n"
-        f"LVMX                         = {_obtener_valor(d, 'lVMx', 1.0):.3f}                  \n"
-        f"LMX                          = {_obtener_valor(d, 'lMX', 1.0):.3f}                  \n"
-        f"LMY                          = {_obtener_valor(d, 'lMY', 1.0):.3f}                  \n"
-        f"LMP                          = {_obtener_valor(d, 'lMP', 1.0):.3f}                 \n"
+        f"LFZ0                         = {_obtener_valor_mf52(d, 'lFz0', 1.0):.3f}                 \n"
+        f"LCX                          = {_obtener_valor_mf52(d, 'lCx', 1.0):.3f}                  \n"
+        f"LMUX                         = {_obtener_valor_mf52(d, 'lMUx', 1.0):.3f}                 \n"
+        f"LEX                          = {_obtener_valor_mf52(d, 'lEx', 1.0):.3f}                 \n"
+        f"LKX                          = {_obtener_valor_mf52(d, 'lKx', 1.0):.3f}                  \n"
+        f"LHX                          = {_obtener_valor_mf52(d, 'lHx', 1.0):.3f}                  \n"
+        f"LVX                          = {_obtener_valor_mf52(d, 'lVx', 1.0):.3f}                 \n"
+        f"LGAMMAX                      = {_obtener_valor_mf52(d, 'lGammax', 1.0):.3f}                 \n"
+        f"LCY                          = {_obtener_valor_mf52(d, 'lCy', 1.0):.3f}                 \n"
+        f"LMUY                         = {_obtener_valor_mf52(d, 'lMUy', 1.0):.3f}                  \n"
+        f"LEY                          = {_obtener_valor_mf52(d, 'lEy', 1.0):.3f}                 \n"
+        f"LKY                          = {_obtener_valor_mf52(d, 'lKy', 1.0):.3f}                  \n"
+        f"LHY                          = {_obtener_valor_mf52(d, 'lHy', 1.0):.3f}                  \n"
+        f"LVY                          = {_obtener_valor_mf52(d, 'lVy', 1.0):.3f}                 \n"
+        f"LGAMMAY                      = {_obtener_valor_mf52(d, 'lGammay', 1.0):.3f}                 \n"
+        f"LGAMMAZ                      = {_obtener_valor_mf52(d, 'lGammaz', 1.0):.3f}                 \n"
+        f"LT                           = {_obtener_valor_mf52(d, 'lt', 1.0):.3f}                  \n"
+        f"LR                           = {_obtener_valor_mf52(d, 'lr', 1.0):.3f}                  \n"
+        f"LXAL                         = {_obtener_valor_mf52(d, 'lXal', 1.0):.3f}                  \n"
+        f"LYKA                         = {_obtener_valor_mf52(d, 'lYka', 1.0):.3f}                  \n"
+        f"LVYKA                        = {_obtener_valor_mf52(d, 'lVyka', 1.0):.3f}                 \n"
+        f"LS                           = {_obtener_valor_mf52(d, 'ls', 1.0):.3f}                \n"
+        f"LKYC                         = {_obtener_valor_mf52(d, 'lKYc', 1.07):.3f}                 \n"
+        f"LKZC                         = {_obtener_valor_mf52(d, 'lKZc', 1.0):.3f}                 \n"
+        f"LVMX                         = {_obtener_valor_mf52(d, 'lVMx', 1.0):.3f}                  \n"
+        f"LMX                          = {_obtener_valor_mf52(d, 'lMX', 1.0):.3f}                  \n"
+        f"LMY                          = {_obtener_valor_mf52(d, 'lMY', 1.0):.3f}                  \n"
+        f"LMP                          = {_obtener_valor_mf52(d, 'lMP', 1.0):.3f}                 \n"
         "$---------------------------------------------longitudinal coefficients\n"
         "[LONGITUDINAL_COEFFICIENTS]\n"
-        f"PCX1                         = {_obtener_valor(d, 'pCx1', 1.0):.10f}                \n"
-        f"PDX1                         = {_obtener_valor(d, 'pDx1', 1.0):.10f}                \n"
-        f"PDX2                         = {_obtener_valor(d, 'pDx2', 0.0):.10f}                \n"
-        f"PDX3                         = {_obtener_valor(d, 'pDx3', 19.26):.10f}              \n"
-        f"PEX1                         = {_obtener_valor(d, 'pEx1', 0.0):.10f}                 \n"
-        f"PEX2                         = {_obtener_valor(d, 'pEx2', 0.0):.10f}                \n"
-        f"PEX3                         = {_obtener_valor(d, 'pEx3', 0.0):.10f}                   \n"
-        f"PEX4                         = {_obtener_valor(d, 'pEx4', 0.0):.10f}                 \n"
-        f"PKX1                         = {_obtener_valor(d, 'pKx1', 30.0):.10f}                \n"
-        f"PKX2                         = {_obtener_valor(d, 'pKx2', 0.0):.10f}                 \n"
-        f"PKX3                         = {_obtener_valor(d, 'pKx3', 0.0):.10f}                 \n"
-        f"PHX1                         = {_obtener_valor(d, 'pHx1', 0.0):.10f}                   \n"
-        f"PHX2                         = {_obtener_valor(d, 'pHx2', 0.0):.10f}                   \n"
-        f"PVX1                         = {_obtener_valor(d, 'pVx1', 0.0):.10f}                   \n"
-        f"PVX2                         = {_obtener_valor(d, 'pVx2', 0.0):.10f}                  \n"
-        f"PVX3                         = {_obtener_valor(d, 'pVx3', 0.0):.10f}                   \n"
-        f"PVX4                         = {_obtener_valor(d, 'pVx4', 0.0):.10f}                  \n"
-        f"PPX1                         = {_obtener_valor(d, 'ppCx1', -0.7053):.10f}                 \n"
-        f"PPX2                         = {_obtener_valor(d, 'ppCx2', -0.5895):.10f}                 \n"
-        f"PPX3                         = {_obtener_valor(d, 'ppCx3', -0.2428):.10f}                 \n"
-        f"PPX4                         = {_obtener_valor(d, 'ppCx4', 0.2052):.10f}                 \n"
-        f"RBX1                         = {_obtener_valor(d, 'rBx1', 1.0):.10f}                  \n"
-        f"RBX2                         = {_obtener_valor(d, 'rBx2', 1.0):.10f}                  \n"
-        f"RBX3                         = {_obtener_valor(d, 'rBx3', 0.0):.10f}                  \n"
-        f"RCX1                         = {_obtener_valor(d, 'rCx1', 1.0):.10f}                  \n"
-        f"REX1                         = {_obtener_valor(d, 'rEx1', 0.0):.10f}                 \n"
-        f"REX2                         = {_obtener_valor(d, 'rEx2', 0.0):.10f}                \n"
-        f"RHX1                         = {_obtener_valor(d, 'rHx1', 0.0):.10f}                  \n"
-        f"RHX2                         = {_obtener_valor(d, 'rHx2', 0.0):.10f}                  \n"
+        f"PCX1                         = {_obtener_valor_mf52(d, 'pCx1', 1.0):.10f}                \n"
+        f"PDX1                         = {_obtener_valor_mf52(d, 'pDx1', 1.0):.10f}                \n"
+        f"PDX2                         = {_obtener_valor_mf52(d, 'pDx2', 0.0):.10f}                \n"
+        f"PDX3                         = {_obtener_valor_mf52(d, 'pDx3', 19.26):.10f}              \n"
+        f"PEX1                         = {_obtener_valor_mf52(d, 'pEx1', 0.0):.10f}                 \n"
+        f"PEX2                         = {_obtener_valor_mf52(d, 'pEx2', 0.0):.10f}                \n"
+        f"PEX3                         = {_obtener_valor_mf52(d, 'pEx3', 0.0):.10f}                   \n"
+        f"PEX4                         = {_obtener_valor_mf52(d, 'pEx4', 0.0):.10f}                 \n"
+        f"PKX1                         = {_obtener_valor_mf52(d, 'pKx1', 30.0):.10f}                \n"
+        f"PKX2                         = {_obtener_valor_mf52(d, 'pKx2', 0.0):.10f}                 \n"
+        f"PKX3                         = {_obtener_valor_mf52(d, 'pKx3', 0.0):.10f}                 \n"
+        f"PHX1                         = {_obtener_valor_mf52(d, 'pHx1', 0.0):.10f}                   \n"
+        f"PHX2                         = {_obtener_valor_mf52(d, 'pHx2', 0.0):.10f}                   \n"
+        f"PVX1                         = {_obtener_valor_mf52(d, 'pVx1', 0.0):.10f}                   \n"
+        f"PVX2                         = {_obtener_valor_mf52(d, 'pVx2', 0.0):.10f}                  \n"
+        f"PVX3                         = {_obtener_valor_mf52(d, 'pVx3', 0.0):.10f}                   \n"
+        f"PVX4                         = {_obtener_valor_mf52(d, 'pVx4', 0.0):.10f}                  \n"
+        f"PPX1                         = {_obtener_valor_mf52(d, 'ppCx1', -0.7053):.10f}                 \n"
+        f"PPX2                         = {_obtener_valor_mf52(d, 'ppCx2', -0.5895):.10f}                 \n"
+        f"PPX3                         = {_obtener_valor_mf52(d, 'ppCx3', -0.2428):.10f}                 \n"
+        f"PPX4                         = {_obtener_valor_mf52(d, 'ppCx4', 0.2052):.10f}                 \n"
+        f"RBX1                         = {_obtener_valor_mf52(d, 'rBx1', 1.0):.10f}                  \n"
+        f"RBX2                         = {_obtener_valor_mf52(d, 'rBx2', 1.0):.10f}                  \n"
+        f"RBX3                         = {_obtener_valor_mf52(d, 'rBx3', 0.0):.10f}                  \n"
+        f"RCX1                         = {_obtener_valor_mf52(d, 'rCx1', 1.0):.10f}                  \n"
+        f"REX1                         = {_obtener_valor_mf52(d, 'rEx1', 0.0):.10f}                 \n"
+        f"REX2                         = {_obtener_valor_mf52(d, 'rEx2', 0.0):.10f}                \n"
+        f"RHX1                         = {_obtener_valor_mf52(d, 'rHx1', 0.0):.10f}                  \n"
+        f"RHX2                         = {_obtener_valor_mf52(d, 'rHx2', 0.0):.10f}                  \n"
         "$----------------------------------------------overturning coefficients\n"
         "[OVERTURNING_COEFFICIENTS]\n"
-        f"QSX1                         = {_obtener_valor(d, 'qSX1', -0.0227):.4f}                \n"
-        f"QSX2                         = {_obtener_valor(d, 'qSX2', 2.1630):.4f}                \n"
-        f"QSX3                         = {_obtener_valor(d, 'qSX3', 0.3030):.4f}                \n"
-        f"QSX4                         = {_obtener_valor(d, 'qSX4', 0.1625):.4f}                \n"
-        f"QSX5                         = {_obtener_valor(d, 'qSX5', 0.0):.4f}                  \n"
-        f"QSX6                         = {_obtener_valor(d, 'qSX6', 0.0):.4f}                  \n"
-        f"QSX7                         = {_obtener_valor(d, 'qSX7', 0.0701):.4f}                \n"
-        f"QSX8                         = {_obtener_valor(d, 'qSX8', 0.0):.4f}                  \n"
-        f"QSX9                         = {_obtener_valor(d, 'qSX9', 0.0):.4f}                 \n"
-        f"QSX10                        = {_obtener_valor(d, 'qSX10', 0.0):.4f}                 \n"
-        f"QSX11                        = {_obtener_valor(d, 'qSX11', 0.0):.4f}                 \n"
-        f"QSX12                        = {_obtener_valor(d, 'qSX12', 0.0):.4f}                 \n"
-        f"QSX13                        = {_obtener_valor(d, 'qSX13', 0.0):.4f}                 \n"
-        f"QSX14                        = {_obtener_valor(d, 'qSX14', 0.0):.4f}                 \n"
-        f"PPMX1                        = {_obtener_valor(d, 'qPPMX1', 0.4034):.4f}                         \n"
+        f"QSX1                         = {_obtener_valor_mf52(d, 'qSX1', -0.0227):.4f}                \n"
+        f"QSX2                         = {_obtener_valor_mf52(d, 'qSX2', 2.1630):.4f}                \n"
+        f"QSX3                         = {_obtener_valor_mf52(d, 'qSX3', 0.3030):.4f}                \n"
+        f"QSX4                         = {_obtener_valor_mf52(d, 'qSX4', 0.1625):.4f}                \n"
+        f"QSX5                         = {_obtener_valor_mf52(d, 'qSX5', 0.0):.4f}                  \n"
+        f"QSX6                         = {_obtener_valor_mf52(d, 'qSX6', 0.0):.4f}                  \n"
+        f"QSX7                         = {_obtener_valor_mf52(d, 'qSX7', 0.0701):.4f}                \n"
+        f"QSX8                         = {_obtener_valor_mf52(d, 'qSX8', 0.0):.4f}                  \n"
+        f"QSX9                         = {_obtener_valor_mf52(d, 'qSX9', 0.0):.4f}                 \n"
+        f"QSX10                        = {_obtener_valor_mf52(d, 'qSX10', 0.0):.4f}                 \n"
+        f"QSX11                        = {_obtener_valor_mf52(d, 'qSX11', 0.0):.4f}                 \n"
+        f"QSX12                        = {_obtener_valor_mf52(d, 'qSX12', 0.0):.4f}                 \n"
+        f"QSX13                        = {_obtener_valor_mf52(d, 'qSX13', 0.0):.4f}                 \n"
+        f"QSX14                        = {_obtener_valor_mf52(d, 'qSX14', 0.0):.4f}                 \n"
+        f"PPMX1                        = {_obtener_valor_mf52(d, 'qPPMX1', 0.4034):.4f}                         \n"
         "$--------------------------------------------------lateral coefficients\n"
         "[LATERAL_COEFFICIENTS]\n"
-        f"PCY1                         = {_obtener_valor(d, 'pCy1', 1.0):.10f}                  \n"
-        f"PDY1                         = {_obtener_valor(d, 'pDy1', 1.0):.10f}                \n"
-        f"PDY2                         = {_obtener_valor(d, 'pDy2', 0.0):.10f}              \n"
-        f"PDY3                         = {_obtener_valor(d, 'pDy3', 9.70):.10f}                   \n"
-        f"PEY1                         = {_obtener_valor(d, 'pEy1', 0.0):.10f}               \n"
-        f"PEY2                         = {_obtener_valor(d, 'pEy2', 0.0):.10f}               \n"
-        f"PEY3                         = {_obtener_valor(d, 'pEy3', 0.0):.10f}                \n"
-        f"PEY4                         = {_obtener_valor(d, 'pEy4', 0.0):.10f}                \n"
-        f"PEY5                         = {_obtener_valor(d, 'pEy5', 0.0):.10f}                  \n"
-        f"PKY1                         = {_obtener_valor(d, 'pKy1', -25.0):.10f}                \n"
-        f"PKY2                         = {_obtener_valor(d, 'pKy2', 2.71):.10f}                  \n"
-        f"PKY3                         = {_obtener_valor(d, 'pKy3', 0.39):.10f}                  \n"
-        f"PKY4                         = {_obtener_valor(d, 'pKy4', 2.0):.10f}                  \n"
-        f"PKY5                         = {_obtener_valor(d, 'pKy5', 0.0):.10f}                  \n"
-        f"PKY6                         = {_obtener_valor(d, 'pKy6', 0.0):.10f}                  \n"
-        f"PKY7                         = {_obtener_valor(d, 'pKy7', 0.0):.10f}                  \n"
-        f"PHY1                         = {_obtener_valor(d, 'pHy1', 0.0):.10f}                   \n"
-        f"PHY2                         = {_obtener_valor(d, 'pHy2', 0.0):.10f}                  \n"
-        f"PHY3                         = {_obtener_valor(d, 'pHy3', 0.0):.10f}                   \n"
-        f"PVY1                         = {_obtener_valor(d, 'pVy1', 0.0):.10f}                   \n"
-        f"PVY2                         = {_obtener_valor(d, 'pVy2', 0.0):.10f}                  \n"
-        f"PVY3                         = {_obtener_valor(d, 'pVy3', 0.0):.10f}                  \n"
-        f"PVY4                         = {_obtener_valor(d, 'pVy4', 0.0):.10f}                  \n"
-        f"PPY1                         = {_obtener_valor(d, 'ppCy1', 0.0):.10f}               \n"
-        f"PPY2                         = {_obtener_valor(d, 'ppCy2', 0.0):.10f}                 \n"
-        f"PPY3                         = {_obtener_valor(d, 'ppCy3', -0.2480):.10f}                  \n"
-        f"PPY4                         = {_obtener_valor(d, 'ppCy4', 0.3440):.10f}                   \n"
-        f"PPY5                         = {_obtener_valor(d, 'ppCy5', 0.0):.10f}                  \n"
-        f"RBY1                         = {_obtener_valor(d, 'rBy1', 1.0):.10f}                  \n"
-        f"RBY2                         = {_obtener_valor(d, 'rBy2', 1.0):.10f}                  \n"
-        f"RBY3                         = {_obtener_valor(d, 'rBy3', 0.0):.10f}               \n"
-        f"RBY4                         = {_obtener_valor(d, 'rBy4', 0.0):.10f}                  \n"
-        f"RCY1                         = {_obtener_valor(d, 'rCy1', 1.0):.10f}                  \n"
-        f"REY1                         = {_obtener_valor(d, 'rEy1', 0.0):.10f}               \n"
-        f"REY2                         = {_obtener_valor(d, 'rEy2', 0.0):.10f}                \n"
-        f"RHY1                         = {_obtener_valor(d, 'rHy1', 0.0):.10f}                  \n"
-        f"RHY2                         = {_obtener_valor(d, 'rHy2', 0.0):.10f}                  \n"
-        f"RVY1                         = {_obtener_valor(d, 'rVy1', 1.0):.10f}                  \n"
-        f"RVY2                         = {_obtener_valor(d, 'rVy2', 1.0):.10f}                  \n"
-        f"RVY3                         = {_obtener_valor(d, 'rVy3', 1.0):.10f}                   \n"
-        f"RVY4                         = {_obtener_valor(d, 'rVy4', 1.0):.10f}                   \n"
-        f"RVY5                         = {_obtener_valor(d, 'rVy5', 1.0):.10f}                  \n"
-        f"RVY6                         = {_obtener_valor(d, 'rVy6', 1.0):.10f}                  \n"
+        f"PCY1                         = {_obtener_valor_mf52(d, 'pCy1', 1.0):.10f}                  \n"
+        f"PDY1                         = {_obtener_valor_mf52(d, 'pDy1', 1.0):.10f}                \n"
+        f"PDY2                         = {_obtener_valor_mf52(d, 'pDy2', 0.0):.10f}              \n"
+        f"PDY3                         = {_obtener_valor_mf52(d, 'pDy3', 9.70):.10f}                   \n"
+        f"PEY1                         = {_obtener_valor_mf52(d, 'pEy1', 0.0):.10f}               \n"
+        f"PEY2                         = {_obtener_valor_mf52(d, 'pEy2', 0.0):.10f}               \n"
+        f"PEY3                         = {_obtener_valor_mf52(d, 'pEy3', 0.0):.10f}                \n"
+        f"PEY4                         = {_obtener_valor_mf52(d, 'pEy4', 0.0):.10f}                \n"
+        f"PEY5                         = {_obtener_valor_mf52(d, 'pEy5', 0.0):.10f}                  \n"
+        f"PKY1                         = {_obtener_valor_mf52(d, 'pKy1', -25.0):.10f}                \n"
+        f"PKY2                         = {_obtener_valor_mf52(d, 'pKy2', 2.71):.10f}                  \n"
+        f"PKY3                         = {_obtener_valor_mf52(d, 'pKy3', 0.39):.10f}                  \n"
+        f"PKY4                         = {_obtener_valor_mf52(d, 'pKy4', 2.0):.10f}                  \n"
+        f"PKY5                         = {_obtener_valor_mf52(d, 'pKy5', 0.0):.10f}                  \n"
+        f"PKY6                         = {_obtener_valor_mf52(d, 'pKy6', 0.0):.10f}                  \n"
+        f"PKY7                         = {_obtener_valor_mf52(d, 'pKy7', 0.0):.10f}                  \n"
+        f"PHY1                         = {_obtener_valor_mf52(d, 'pHy1', 0.0):.10f}                   \n"
+        f"PHY2                         = {_obtener_valor_mf52(d, 'pHy2', 0.0):.10f}                  \n"
+        f"PHY3                         = {_obtener_valor_mf52(d, 'pHy3', 0.0):.10f}                   \n"
+        f"PVY1                         = {_obtener_valor_mf52(d, 'pVy1', 0.0):.10f}                   \n"
+        f"PVY2                         = {_obtener_valor_mf52(d, 'pVy2', 0.0):.10f}                  \n"
+        f"PVY3                         = {_obtener_valor_mf52(d, 'pVy3', 0.0):.10f}                  \n"
+        f"PVY4                         = {_obtener_valor_mf52(d, 'pVy4', 0.0):.10f}                  \n"
+        f"PPY1                         = {_obtener_valor_mf52(d, 'ppCy1', 0.0):.10f}               \n"
+        f"PPY2                         = {_obtener_valor_mf52(d, 'ppCy2', 0.0):.10f}                 \n"
+        f"PPY3                         = {_obtener_valor_mf52(d, 'ppCy3', -0.2480):.10f}                 \n"
+        f"PPY4                         = {_obtener_valor_mf52(d, 'ppCy4', 0.3440):.10f}                   \n"
+        f"PPY5                         = {_obtener_valor_mf52(d, 'ppCy5', 0.0):.10f}                  \n"
+        f"RBY1                         = {_obtener_valor_mf52(d, 'rBy1', 1.0):.10f}                  \n"
+        f"RBY2                         = {_obtener_valor_mf52(d, 'rBy2', 1.0):.10f}                  \n"
+        f"RBY3                         = {_obtener_valor_mf52(d, 'rBy3', 0.0):.10f}               \n"
+        f"RBY4                         = {_obtener_valor_mf52(d, 'rBy4', 0.0):.10f}                  \n"
+        f"RCY1                         = {_obtener_valor_mf52(d, 'rCy1', 1.0):.10f}                  \n"
+        f"REY1                         = {_obtener_valor_mf52(d, 'rEy1', 0.0):.10f}               \n"
+        f"REY2                         = {_obtener_valor_mf52(d, 'rEy2', 0.0):.10f}                \n"
+        f"RHY1                         = {_obtener_valor_mf52(d, 'rHy1', 0.0):.10f}                  \n"
+        f"RHY2                         = {_obtener_valor_mf52(d, 'rHy2', 0.0):.10f}                  \n"
+        f"RVY1                         = {_obtener_valor_mf52(d, 'rVy1', 1.0):.10f}                  \n"
+        f"RVY2                         = {_obtener_valor_mf52(d, 'rVy2', 1.0):.10f}                  \n"
+        f"RVY3                         = {_obtener_valor_mf52(d, 'rVy3', 1.0):.10f}                   \n"
+        f"RVY4                         = {_obtener_valor_mf52(d, 'rVy4', 1.0):.10f}                   \n"
+        f"RVY5                         = {_obtener_valor_mf52(d, 'rVy5', 1.0):.10f}                  \n"
+        f"RVY6                         = {_obtener_valor_mf52(d, 'rVy6', 1.0):.10f}                  \n"
         "$--------------------------------------------------rolling coefficients\n"
         "[ROLLING_COEFFICIENTS]\n"
-        f"QSY1                         = {_obtener_valor(d, 'qSY1', 0.01):.10f}                 \n"
-        f"QSY2                         = {_obtener_valor(d, 'qSY2', 0.0):.10f}                  \n"
-        f"QSY3                         = {_obtener_valor(d, 'qSY3', 0.0004):.10f}                 \n"
-        f"QSY4                         = {_obtener_valor(d, 'qSY4', 4e-05):.10f}                  \n"
-        f"QSY5                         = {_obtener_valor(d, 'qSY5', 0.0):.10f}                  \n"
-        f"QSY6                         = {_obtener_valor(d, 'qSY6', 0.0):.10f}                  \n"
-        f"QSY7                         = {_obtener_valor(d, 'qSY7', 0.0):.10f}                  \n"
-        f"QSY8                         = {_obtener_valor(d, 'qSY8', 0.0):.10f}                  \n"
+        f"QSY1                         = {_obtener_valor_mf52(d, 'qSY1', 0.01):.10f}                 \n"
+        f"QSY2                         = {_obtener_valor_mf52(d, 'qSY2', 0.0):.10f}                  \n"
+        f"QSY3                         = {_obtener_valor_mf52(d, 'qSY3', 0.0004):.10f}                 \n"
+        f"QSY4                         = {_obtener_valor_mf52(d, 'qSY4', 4e-05):.10f}                  \n"
+        f"QSY5                         = {_obtener_valor_mf52(d, 'qSY5', 0.0):.10f}                  \n"
+        f"QSY6                         = {_obtener_valor_mf52(d, 'qSY6', 0.0):.10f}                  \n"
+        f"QSY7                         = {_obtener_valor_mf52(d, 'qSY7', 0.0):.10f}                  \n"
+        f"QSY8                         = {_obtener_valor_mf52(d, 'qSY8', 0.0):.10f}                  \n"
         "$-------------------------------------------------aligning coefficients\n"
         "[ALIGNING_COEFFICIENTS]\n"
-        f"QBZ1                         = {_obtener_valor(d, 'qBz1', 0.0):.10f}         \n"
-        f"QBZ2                         = {_obtener_valor(d, 'qBz2', 0.0):.10f}                   \n"
-        f"QBZ3                         = {_obtener_valor(d, 'qBz3', 0.0):.10f}                  \n"
-        f"QBZ4                         = {_obtener_valor(d, 'qBz4', 0.0):.10f}                  \n"
-        f"QBZ5                         = {_obtener_valor(d, 'qBz5', 4.954):.10f}                  \n"
-        f"QBZ9                         = {_obtener_valor(d, 'qBz9', 16.725):.10f}                  \n"
-        f"QBZ10                        = {_obtener_valor(d, 'qBz10', 0.809):.10f}                 \n"
-        f"QCZ1                         = {_obtener_valor(d, 'qCz1', 1.0):.10f}                \n"
-        f"QDZ1                         = {_obtener_valor(d, 'qDz1', 0.0):.10f}                \n"
-        f"QDZ2                         = {_obtener_valor(d, 'qDz2', 0.0):.10f}                   \n"
-        f"QDZ3                         = {_obtener_valor(d, 'qDz3', 0.0):.10f}                  \n"
-        f"QDZ4                         = {_obtener_valor(d, 'qDz4', 0.0):.10f}                  \n"
-        f"QDZ5                         = {_obtener_valor(d, 'qDz5', -19.378):.10f}                  \n"
-        f"QDZ6                         = {_obtener_valor(d, 'qDz6', 0.0):.10f}                  \n"
-        f"QDZ7                         = {_obtener_valor(d, 'qDz7', 0.0):.10f}                  \n"
-        f"QDZ8                         = {_obtener_valor(d, 'qDz8', -2.229):.10f}                  \n"
-        f"QDZ9                         = {_obtener_valor(d, 'qDz9', 0.61):.10f}                  \n"
-        f"QDZ10                        = {_obtener_valor(d, 'qDz10', 0.0):.10f}                 \n"
-        f"QDZ11                        = {_obtener_valor(d, 'qDz11', 0.0):.10f}                 \n"
-        f"QEZ1                         = {_obtener_valor(d, 'qEz1', 0.0):.10f}                 \n"
-        f"QEZ2                         = {_obtener_valor(d, 'qEz2', 0.0):.10f}                 \n"
-        f"QEZ3                         = {_obtener_valor(d, 'qEz3', 0.0):.10f}                 \n"
-        f"QEZ4                         = {_obtener_valor(d, 'qEz4', 0.0):.10f}                 \n"
-        f"QEZ5                         = {_obtener_valor(d, 'qEz5', 0.0):.10f}                 \n"
-        f"QHZ1                         = {_obtener_valor(d, 'qHz1', 0.0):.10f}                 \n"
-        f"QHZ2                         = {_obtener_valor(d, 'qHz2', 0.0):.10f}                 \n"
-        f"QHZ3                         = {_obtener_valor(d, 'qHz3', 0.0):.10f}                 \n"
-        f"QHZ4                         = {_obtener_valor(d, 'qHz4', 0.0):.10f}                 \n"
-        f"PPZ1                         = {_obtener_valor(d, 'qPPZ1', 0.0):.10f}                  \n"
-        f"PPZ2                         = {_obtener_valor(d, 'qPPZ2', 0.0):.10f}                  \n"
-        f"SSZ1                         = {_obtener_valor(d, 'qSSZ1', 0.0):.10f}                  \n"
-        f"SSZ2                         = {_obtener_valor(d, 'qSSZ2', 0.0):.10f}                  \n"
-        f"SSZ3                         = {_obtener_valor(d, 'qSSZ3', 0.0):.10f}                  \n"
-        f"SSZ4                         = {_obtener_valor(d, 'qSSZ4', 0.0):.10f}                  \n"
+        f"QBZ1                         = {_obtener_valor_mf52(d, 'qBz1', 0.0):.10f}         \n"
+        f"QBZ2                         = {_obtener_valor_mf52(d, 'qBz2', 0.0):.10f}                   \n"
+        f"QBZ3                         = {_obtener_valor_mf52(d, 'qBz3', 0.0):.10f}                  \n"
+        f"QBZ4                         = {_obtener_valor_mf52(d, 'qBz4', 0.0):.10f}                  \n"
+        f"QBZ5                         = {_obtener_valor_mf52(d, 'qBz5', 4.954):.10f}                  \n"
+        f"QBZ9                         = {_obtener_valor_mf52(d, 'qBz9', 16.725):.10f}                  \n"
+        f"QBZ10                        = {_obtener_valor_mf52(d, 'qBz10', 0.809):.10f}                 \n"
+        f"QCZ1                         = {_obtener_valor_mf52(d, 'qCz1', 1.0):.10f}                \n"
+        f"QDZ1                         = {_obtener_valor_mf52(d, 'qDz1', 0.0):.10f}                \n"
+        f"QDZ2                         = {_obtener_valor_mf52(d, 'qDz2', 0.0):.10f}                   \n"
+        f"QDZ3                         = {_obtener_valor_mf52(d, 'qDz3', 0.0):.10f}                  \n"
+        f"QDZ4                         = {_obtener_valor_mf52(d, 'qDz4', 0.0):.10f}                  \n"
+        f"QDZ5                         = {_obtener_valor_mf52(d, 'qDz5', -19.378):.10f}                  \n"
+        f"QDZ6                         = {_obtener_valor_mf52(d, 'qDz6', 0.0):.10f}                  \n"
+        f"QDZ7                         = {_obtener_valor_mf52(d, 'qDz7', 0.0):.10f}                  \n"
+        f"QDZ8                         = {_obtener_valor_mf52(d, 'qDz8', -2.229):.10f}                  \n"
+        f"QDZ9                         = {_obtener_valor_mf52(d, 'qDz9', 0.61):.10f}                  \n"
+        f"QDZ10                        = {_obtener_valor_mf52(d, 'qDz10', 0.0):.10f}                 \n"
+        f"QDZ11                        = {_obtener_valor_mf52(d, 'qDz11', 0.0):.10f}                 \n"
+        f"QEZ1                         = {_obtener_valor_mf52(d, 'qEz1', 0.0):.10f}                 \n"
+        f"QEZ2                         = {_obtener_valor_mf52(d, 'qEz2', 0.0):.10f}                 \n"
+        f"QEZ3                         = {_obtener_valor_mf52(d, 'qEz3', 0.0):.10f}                 \n"
+        f"QEZ4                         = {_obtener_valor_mf52(d, 'qEz4', 0.0):.10f}                 \n"
+        f"QEZ5                         = {_obtener_valor_mf52(d, 'qEz5', 0.0):.10f}                 \n"
+        f"QHZ1                         = {_obtener_valor_mf52(d, 'qHz1', 0.0):.10f}                 \n"
+        f"QHZ2                         = {_obtener_valor_mf52(d, 'qHz2', 0.0):.10f}                 \n"
+        f"QHZ3                         = {_obtener_valor_mf52(d, 'qHz3', 0.0):.10f}                 \n"
+        f"QHZ4                         = {_obtener_valor_mf52(d, 'qHz4', 0.0):.10f}                 \n"
+        f"PPZ1                         = {_obtener_valor_mf52(d, 'qPPZ1', 0.0):.10f}                  \n"
+        f"PPZ2                         = {_obtener_valor_mf52(d, 'qPPZ2', 0.0):.10f}                  \n"
+        f"SSZ1                         = {_obtener_valor_mf52(d, 'qSSZ1', 0.0):.10f}                  \n"
+        f"SSZ2                         = {_obtener_valor_mf52(d, 'qSSZ2', 0.0):.10f}                  \n"
+        f"SSZ3                         = {_obtener_valor_mf52(d, 'qSSZ3', 0.0):.10f}                  \n"
+        f"SSZ4                         = {_obtener_valor_mf52(d, 'qSSZ4', 0.0):.10f}                  \n"
         "$-------------------------------------------------turnslip coefficients\n"
         "[TURNSLIP_COEFFICIENTS]\n"
-        f"PDXP1                        = {_obtener_valor(d, 'PDXP1', 0.0):.10f}                  \n"
-        f"PDXP2                        = {_obtener_valor(d, 'PDXP2', 0.0):.10f}                  \n"
-        f"PDXP3                        = {_obtener_valor(d, 'PDXP3', 0.0):.10f}                  \n"
-        f"PKYP1                        = {_obtener_valor(d, 'PKYP1', 0.0):.10f}                  \n"
-        f"PDYP1                        = {_obtener_valor(d, 'PDYP1', 0.0):.10f}                  \n"
-        f"PDYP2                        = {_obtener_valor(d, 'PDYP2', 0.0):.10f}                  \n"
-        f"PDYP3                        = {_obtener_valor(d, 'PDYP3', 0.0):.10f}                  \n"
-        f"PDYP4                        = {_obtener_valor(d, 'PDYP4', 0.0):.10f}                  \n"
-        f"PHYP1                        = {_obtener_valor(d, 'PHYP1', 0.0):.10f}                  \n"
-        f"PHYP2                        = {_obtener_valor(d, 'PHYP2', 0.0):.10f}                  \n"
-        f"PHYP3                        = {_obtener_valor(d, 'PHYP3', 0.0):.10f}                  \n"
-        f"PHYP4                        = {_obtener_valor(d, 'PHYP4', 0.0):.10f}                  \n"
-        f"PECP1                        = {_obtener_valor(d, 'PECP1', 0.0):.10f}                  \n"
-        f"PECP2                        = {_obtener_valor(d, 'PECP2', 0.0):.10f}                  \n"
-        f"QDTP1                        = {_obtener_valor(d, 'QDTP1', 0.0):.10f}                  \n"
-        f"QCRP1                        = {_obtener_valor(d, 'QCRP1', 0.0):.10f}                  \n"
-        f"QCRP2                        = {_obtener_valor(d, 'QCRP2', 0.0):.10f}                  \n"
-        f"QBRP1                        = {_obtener_valor(d, 'QBRP1', 0.0):.10f}                  \n"
-        f"QDRP1                        = {_obtener_valor(d, 'QDRP1', 0.0):.10f}                  \n"
+        f"PDXP1                        = {_obtener_valor_mf52(d, 'PDXP1', 0.0):.10f}                  \n"
+        f"PDXP2                        = {_obtener_valor_mf52(d, 'PDXP2', 0.0):.10f}                  \n"
+        f"PDXP3                        = {_obtener_valor_mf52(d, 'PDXP3', 0.0):.10f}                  \n"
+        f"PKYP1                        = {_obtener_valor_mf52(d, 'PKYP1', 0.0):.10f}                  \n"
+        f"PDYP1                        = {_obtener_valor_mf52(d, 'PDYP1', 0.0):.10f}                  \n"
+        f"PDYP2                        = {_obtener_valor_mf52(d, 'PDYP2', 0.0):.10f}                  \n"
+        f"PDYP3                        = {_obtener_valor_mf52(d, 'PDYP3', 0.0):.10f}                  \n"
+        f"PDYP4                        = {_obtener_valor_mf52(d, 'PDYP4', 0.0):.10f}                  \n"
+        f"PHYP1                        = {_obtener_valor_mf52(d, 'PHYP1', 0.0):.10f}                  \n"
+        f"PHYP2                        = {_obtener_valor_mf52(d, 'PHYP2', 0.0):.10f}                  \n"
+        f"PHYP3                        = {_obtener_valor_mf52(d, 'PHYP3', 0.0):.10f}                  \n"
+        f"PHYP4                        = {_obtener_valor_mf52(d, 'PHYP4', 0.0):.10f}                  \n"
+        f"PECP1                        = {_obtener_valor_mf52(d, 'PECP1', 0.0):.10f}                  \n"
+        f"PECP2                        = {_obtener_valor_mf52(d, 'PECP2', 0.0):.10f}                  \n"
+        f"QDTP1                        = {_obtener_valor_mf52(d, 'QDTP1', 0.0):.10f}                  \n"
+        f"QCRP1                        = {_obtener_valor_mf52(d, 'QCRP1', 0.0):.10f}                  \n"
+        f"QCRP2                        = {_obtener_valor_mf52(d, 'QCRP2', 0.0):.10f}                  \n"
+        f"QBRP1                        = {_obtener_valor_mf52(d, 'QBRP1', 0.0):.10f}                  \n"
+        f"QDRP1                        = {_obtener_valor_mf52(d, 'QDRP1', 0.0):.10f}                  \n"
         "*=======================================================================\n"
         "*  Fin del archivo .tir\n"
         "*=======================================================================\n"
