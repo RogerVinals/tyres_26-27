@@ -71,6 +71,7 @@ MAX_PUNTOS = {
     "fx0": None,
     "combined": None,
 }
+}
 
 
 def cargar_config_fitting(config_path: str | Path = "config_ttc.yaml") -> dict:
